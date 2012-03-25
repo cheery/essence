@@ -1,0 +1,65 @@
+#!/usr/bin/env python
+
+from freetype import Freetype
+import Image
+from atlas import Allocator, OutOfArea
+import sys, os, json
+
+#from random import randint
+
+if __name__ == '__main__':
+    fontname = sys.argv[1]
+    size = int(sys.argv[2])
+    outputname = sys.argv[3]
+    os.mkdir(outputname)
+
+    allocator = Allocator()
+    freetype = Freetype()
+    face = freetype.face(filename=fontname, size=size)
+    items = []
+
+
+    metadata = {}
+    for glyph, width, height, bitmap in face:
+        metric = glyph['metric']['bearing']['h']
+        if width*height > 0:
+            alpha = Image.fromstring('L', (width, height), bitmap)
+            image = Image.new('RGBA', (width, height), (255,255,255,0))
+            image.putalpha(alpha)
+            #image = Image.new('RGBA', (width, height), (randint(0, 255),randint(0, 255),randint(0, 255),255))
+            item = allocator.add(width, height)
+            item.image = image
+            item.glyph = glyph
+            items.append(item)
+        else:
+            metadata[glyph['char']] = {
+                'display'   : False,
+                'advance'   : metric['advance'],
+            }
+
+    width = 2048
+    height = 2048
+    while allocator.allocate(width-2, height-2):
+        width -= 2
+        height -= 2
+    allocator.allocate(width, height)
+
+    result = Image.new('RGBA', (width, height), (255,255,255,0))
+    for item in items:
+        result.paste(item.image, (item.x, item.y))
+        metric = item.glyph['metric']['bearing']['h']
+        metadata[item.glyph['char']] = {
+            'display'   : True,
+            'width'     : item.width,
+            'height'    : item.height,
+            'advance'   : metric['advance'],
+            'hbearing'  : metric['x'],
+            'vbearing'  : metric['y'],
+            'uv'        : {
+                's' : float(item.x)/width,
+                't' : float(item.y)/height,
+            },
+        }
+
+    result.save('%s/bitmap.png' % outputname);
+    open('%s/metadata.json' % outputname, 'w').write(json.dumps(metadata))
