@@ -111,6 +111,14 @@ class stretch(object):
         surface = pygame.transform.smoothscale(self.surface, (rect.width, rect.height))
         screen.blit(surface, (rect.left, rect.top))
 
+class picarea(object):
+    def __init__(self, surface, area):
+        self.surface = surface
+        self.area = area
+
+    def blit(self, screen, rect):
+        screen.blit(self.surface, (rect.left, rect.top), self.area)
+
 class color(object):
     def __init__(self, r,g,b,a=255):
         self.rgba = r,g,b,a

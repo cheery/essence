@@ -24,9 +24,9 @@
      borderopacity="0.0"
      inkscape:pageopacity="0"
      inkscape:pageshadow="0"
-     inkscape:zoom="22.627417"
-     inkscape:cx="12.116841"
-     inkscape:cy="6.2828735"
+     inkscape:zoom="8"
+     inkscape:cx="-7.7209467"
+     inkscape:cy="34.670769"
      inkscape:document-units="px"
      inkscape:current-layer="layer2"
      showgrid="true"
@@ -34,8 +34,8 @@
      inkscape:guide-bbox="true"
      inkscape:window-width="1106"
      inkscape:window-height="1143"
-     inkscape:window-x="0"
-     inkscape:window-y="26"
+     inkscape:window-x="532"
+     inkscape:window-y="27"
      inkscape:window-maximized="0">
     <sodipodi:guide
        orientation="1,0"
@@ -68,8 +68,7 @@
   <g
      inkscape:label="graphics"
      inkscape:groupmode="layer"
-     id="layer1"
-     sodipodi:insensitive="true">
+     id="layer1">
     <rect
        y="1047.3622"
        x="0"
@@ -162,6 +161,30 @@
        width="1"
        id="rect3256"
        style="fill:#000000;fill-opacity:1;stroke:none" />
+    <path
+       style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none"
+       d="m 1,976.36218 0,12 14,0 c 0,-14 -11,-16 -11,-16 l -3,4"
+       id="path3005"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="ccccc" />
+    <path
+       sodipodi:nodetypes="ccccc"
+       inkscape:connector-curvature="0"
+       id="path3775"
+       d="m 1,1005.3622 0,-12.00002 14,0 c 0,14.00002 -11,16.00002 -11,16.00002 l -3,-4"
+       style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+    <path
+       sodipodi:nodetypes="ccccc"
+       inkscape:connector-curvature="0"
+       id="path3777"
+       d="m -15,976.36218 0,12 -14,0 c 0,-14 11,-16 11,-16 l 3,4"
+       style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none" />
+    <path
+       style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:1;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none"
+       d="m -15,1005.3622 0,-12.00002 -14,0 c 0,14.00002 11,16.00002 11,16.00002 l 3,-4"
+       id="path3779"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="ccccc" />
   </g>
   <g
      inkscape:groupmode="layer"
@@ -210,5 +233,21 @@
        inkscape:export-filename="/home/cheery/essence/editor/assets/caret.bottom.png"
        inkscape:export-xdpi="90"
        inkscape:export-ydpi="90" />
+    <rect
+       style="fill:none;fill-opacity:1;stroke:none"
+       id="alien.left"
+       width="16"
+       height="39"
+       x="-30"
+       y="971.36218"
+       inkscape:label="alien.left" />
+    <rect
+       y="971.36218"
+       x="0"
+       height="39"
+       width="16"
+       id="alien.right"
+       style="fill:none;fill-opacity:1;stroke:none"
+       inkscape:label="alien.right" />
   </g>
 </svg>
