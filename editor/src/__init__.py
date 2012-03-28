@@ -35,8 +35,7 @@ class node(object):
     def __init__(self, info):
         self.info = info
 
-sel = None
-start = stop = None
+sel = selection.caret(head=0,tail=0)
 
 example = [
     node('OPEN'),
@@ -55,15 +54,15 @@ def refresh():
     for index, obj in enumerate(example):
         if isinstance(obj, node):
             if obj.info == 'OPEN':
-                pair = alien_left, rectangle(x+2,y-13,x+10,y+7)
+                pair = alien_left, rectangle(x+2,y-8,x+5,y+3)
                 output.append(pair)
                 visual.entries.append(selection.selector(pair[1].pad(1), index))
-                x += 12
+                x += 6
             if obj.info == 'CLOSE':
-                pair = alien_right, rectangle(x+2,y-13,x+10,y+7)
+                pair = alien_right, rectangle(x+2,y-8,x+5,y+3)
                 output.append(pair)
                 visual.entries.append(selection.selector(pair[1].pad(1), index))
-                x += 12
+                x += 6
         else:
             metrics = font.metadata[obj]
             if metrics['display']:
@@ -75,26 +74,6 @@ def refresh():
 
 refresh()
 
-#selectables = []
-#
-#
-#width = 16
-#height = 39
-#stepx = width + 5
-#stepy = height + 5
-#for i in range(200):
-#    x = i % 20
-#    y = i / 20
-#    rect = rectangle(10+x*stepx, 10+y*stepy, 10+x*stepx+width, 10+y*stepy+height)
-#    selectables.append(selector(rect, i))
-#
-#v = visual(selectables)
-#
-#def pick_index(pos):
-#    return v.pick(pos)
-#
-#
-#
 #border = patch9(pygame.image.load('assets/border.png'))
 #pupu = pygame.image.load('assets/pupu.jpg')
 #quad = pygame.image.load('assets/quad.png')
@@ -102,93 +81,75 @@ refresh()
 #invert = invert(color(255,255,255))
 #
 #transcludent = color(100, 0, 0, 150)
-#
-#r1 = rectangle(10, 10, 100, 100)
-#r2 = rectangle(10, 100, 100, 200)
-#r3 = rectangle(10, 200, 100, 300)
-#r4 = rectangle(0, 0, 300, 500)
-#r5 = rectangle(50, 0, 100, 100)
-#r6 = rectangle(70, 50, 120, 400)
-#
-#b0 = rectangle(100,800,200,900)
-#b1 = rectangle(192,825,300,900)
-#
-#start = stop = None
-#sel = None
-#
+
+pygame.key.set_repeat(500, 25)
+
+dragging = False
 def buttondown(button, pos):
-    global start, stop, sel
-#    global start, selection0, selection1, sel
-    if button==3 and sel:
-        example[sel[0]:sel[1]] = []
-        sel = None
-        refresh()
-        return
+    global sel, dragging
+    if button==3:
+        example[sel.start:sel.stop] = []
+        sel.tail = sel.head = sel.start
+        return refresh()
     start = visual.pick(pos)
     if start is not None:
         obj, edge = start
-        sel = edge, edge
+        sel.tail = sel.head = edge
+        dragging = True
 
 def buttonup(button, pos):
-    global start, stop, sel
-    if start is None: return
+    global sel, dragging
+    if dragging == False: return
+    dragging = False
     stop = visual.pick(pos)
-    if stop is None:
-        start = None
-        return
-    start_obj, start_edge = start
-    stop_obj, stop_edge = stop
-    sel = min(start_edge, stop_obj), max(start_edge,stop_obj+1)
-    if start==stop: sel = start_edge, start_edge
-    start = stop = None
-#    global start, stop, sel
-#    if start is None or stop is None: return
-#    start_obj, start_edge = start
-#    stop_obj, stop_edge = stop
-##    if start<stop:
-##        selection1 = selection_rect(start_edge)
-##        selection0 = selection_rect(stop_obj)
-##    if start>stop:
-##        selection0 = selection_rect(start_edge-1)
-##        selection1 = selection_rect(stop_obj)
-#    sel = min(start_edge, stop_obj), max(start_edge,stop_obj+1)
-#    if start==stop:
-##        selection0 = selection_rect(start_edge-1)
-##        selection1 = selection_rect(start_edge)
-#        sel = start_edge, start_edge
-#    start = stop = None
-#
+    if stop is not None:
+        stop_obj, stop_edge = stop
+        if stop_edge == sel.tail:
+            sel.head = sel.tail
+        elif stop_edge < sel.tail:
+            sel.head = stop_obj
+        elif stop_edge > sel.tail:
+            sel.head = stop_obj+1
+
 def motion(buttons, pos, rel):
-    global start, stop, sel
-    if start is None: return
+    global sel, dragging
+    if dragging == False: return
     stop = visual.pick(pos)
-    if stop is None: return
-    start_obj, start_edge = start
-    stop_obj, stop_edge = stop
-    sel = min(start_edge, stop_obj), max(start_edge,stop_obj+1)
-    if start==stop: sel = start_edge, start_edge
+    if stop is not None:
+        stop_obj, stop_edge = stop
+        if stop_edge == sel.tail:
+            sel.head = sel.tail
+        elif stop_edge < sel.tail:
+            sel.head = stop_obj
+        elif stop_edge > sel.tail:
+            sel.head = stop_obj+1
 
 def keydown(key, character):
     global sel
     print key, repr(character)
     if key == 276:
-        sel = sel[0]-1, sel[0]-1
-    if key == 275:
-        sel = sel[0]+1, sel[0]+1
-    if key == 9:
-        example[sel[0]:sel[1]] = [node('OPEN'), node('CLOSE')]
-        sel = sel[0]+1, sel[0]+1
+        sel.tail = sel.head = sel.head - 1
+    elif key == 275:
+        sel.tail = sel.head = sel.head + 1
+    elif key == 9:
+        example[sel.start:sel.stop] = [node('OPEN'), node('CLOSE')]
+        sel.tail = sel.head = sel.start+1
+    elif key == 127:
+        if sel.length == 0:
+            sel.tail = sel.head + 1
+        example[sel.start:sel.stop] = []
+        sel.head = sel.tail = sel.start
     elif character == '\r':
-        example[sel[0]:sel[1]] = []
-        sel = sel[0]+1, sel[0]+1
+        example[sel.start:sel.stop] = []
+        sel.head = sel.tail = sel.start+1
     elif key == 8:
-        if sel[0] == sel[1]:
-            sel = sel[0]-1, sel[0]
-        example[sel[0]:sel[1]] = []
-        sel = sel[0], sel[0]
-    elif character != '' and sel:
-        example[sel[0]:sel[1]] = [character]
-        sel = sel[0]+1, sel[0]+1
+        if sel.length == 0:
+            sel.tail = sel.head - 1
+        example[sel.start:sel.stop] = []
+        sel.head = sel.tail = sel.start
+    elif character != '':
+        example[sel.start:sel.stop] = [character]
+        sel.head = sel.tail = sel.start+1
     return refresh()
 
 def keyup(key):
@@ -207,9 +168,7 @@ def fill(screen):
     for graphic, rect in output:
         graphic.blit(screen, rect)
 
-    if sel:
-        start, stop = sel
-        visual.blit_range(screen, start, stop, visual_config)
+    visual.blit_range(screen, sel.start, sel.stop, visual_config)
 #    width, height = screen.get_size()
 ##    font.blit(screen, (width/2,40), "font blitting test")
 #

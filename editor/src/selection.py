@@ -1,3 +1,21 @@
+# THE PROGRAM NEEDS A CONCEPT OF SELECTION
+class caret(object):
+    def __init__(self, head, tail):
+        self.head = head
+        self.tail = tail
+    
+    @property
+    def length(self):
+        return abs(self.head - self.tail)
+
+    @property
+    def start(self):
+        return self.head if self.head < self.tail else self.tail
+
+    @property
+    def stop(self):
+        return self.tail if self.head < self.tail else self.head
+
 class selector(object):
     def __init__(self, rect, index):
         self.rect = rect
