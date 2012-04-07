@@ -1,5 +1,6 @@
 import essence.document
-from essence.document import load, pretty_print, save, retag, wrap, unwrap
+from essence.document import load, pretty_print, save, retag, wrap, unwrap, splice
+from essence.document import string, block
 
 err, document = load('document/testa.csf')
 if err:
@@ -32,10 +33,22 @@ if document == None:
 else:
     save(document, 'document/test.csf')
 
-retag(document, 3, 4, u'sub')
-retag(document, 4, 5, u'sub')
-retag(document, 0, 6, u'div')
-wrap(document, 3, 5)
+#retag(document, 3, 4, u'sub')
+#retag(document, 4, 5, u'sub')
+#retag(document, 0, 6, u'div')
+#wrap(document, 3, 5)
 #unwrap(document, 3, 5)
+
+print splice(document, (2, None), (2, None), [
+    string(u'var', u'hello'),
+])
+
+pretty_print(document)
+
+print splice(document, (2, 5), (3, None), [
+    string(u'', u'_world'),
+    string(u'toy', u'wunderbar'),
+])
+
 #essence.document.retag(document, 1, 2, u'float')
 pretty_print(document)

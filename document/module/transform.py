@@ -68,11 +68,49 @@ def find(document, start, stop):
             return child
         base += child.span + 1
 
-def splice(document, (start, pos0), (stop, pos1), segment):
+def cut_selection(elements, start, stop, index0, index1):
+    ldata = rdata = None
+    if start == stop and (not None in (index0, index1)):
+        ldata, drop, rdata = elements[start].partition(index0, index1)
+        return [drop], ldata, rdata
+    if index0 != None:
+        ldata, elements[start] = elements[start].partition(index0)
+    if index1 != None:
+        elements[stop], rdata = elements[stop].partition(index1)
+        stop += 1
+    return elements[start:stop], ldata, rdata, stop
+
+def splice_span((start, index0), (stop, index1), segment):
+    return core.count_span(segment) - (index0 != None) - (index1 != None)
+
+def respan(element, delta):
+    if element.dtype != core.document.dtype:
+        element.span += delta
+    element.span += delta
+
+def splice(document, (start, index0), (stop, index1), segment):
     common, start, stop = find_common(document, start, stop)
     output, start, stop = contiguous(common, start, stop)
-
-    lmerge, data, rmerge = segment
+    dropping, ldata, rdata, stop = cut_selection(output, start, stop, index0, index1)
+    lmerge = ldata is not None
+    rmerge = rdata is not None
+    if len(segment) == 0 and lmerge or rmerge:
+        return None
+    if lmerge and not segment[0] & ldata:
+        return None
+    if rmerge and not segment[-1] & rdata:
+        return None
+    data = core.dup(segment)
+    if lmerge:
+        data[0] = ldata + data[0]
+    if rmerge:
+        data[-1] = data[-1] + rdata
+    output[start:stop] = data
+    common.children = core.reparent(output, common)
+    inserted = splice_span((start, index0), (stop, index1), segment)
+    deleted = splice_span((start, index0), (stop, index1), dropping)
+    respan(common, inserted - deleted)
+    return dropping
     # cut selection into objects with given coordinates (do not change anything yet)
     # check that remaining possible merger pieces match with data, if merging.
     # if merging, merge.

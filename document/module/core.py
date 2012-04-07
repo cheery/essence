@@ -11,6 +11,35 @@ class string(object):
     def copy(self):
         return string(self.tag, self.data)
 
+    def partition(self, *indices):
+        out = []
+        last = 0
+        for index in indices:
+            out.append(string(self.tag, self.data[last:index]))
+            last = index
+        return out + [string(self.tag, self.data[last:])]
+
+    def __add__(self, other):
+        if not isinstance(other, string):
+            raise Exception("cannot join")
+        tag = tagmerge(self.tag, other.tag)
+        return string(tag, self.data + other.data)
+
+    def __radd__(self, other):
+        if not isinstance(other, string):
+            raise Exception("cannot join")
+        tag = tagmerge(self.tag, other.tag)
+        return string(tag, other.data + self.data)
+
+    def __and__(self, other):
+        return isinstance(other, string)
+
+    def __rand__(self, other):
+        return isinstance(other, string)
+    
+    def __repr__(self):
+        return 'string(%r,%r)' % (self.tag, self.data)
+
 class block(object):
     dtype = 0
     parent = None
@@ -33,6 +62,9 @@ class block(object):
 
     def copy(self):
         return block(self.tag, dup(self))
+
+    def __repr__(self):
+        return 'block(%r,%r)' % (self.tag, self.children)
 
 class lshard(object):
     dtype = 2
