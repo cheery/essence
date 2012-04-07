@@ -3,15 +3,13 @@ version = 0, 0, 0
 class string(object):
     dtype = 1
     parent = None
+    span = 0
     def __init__(self, tag, data):
         self.tag = tag
         self.data = data
-        self.indices = len(data)+1
 
-def reparent(children, parent):
-    for child in children:
-        child.parent = parent
-    return children
+    def copy(self):
+        return string(self.tag, self.data)
 
 class block(object):
     dtype = 0
@@ -19,7 +17,7 @@ class block(object):
     def __init__(self, tag, children):
         self.tag = tag
         self.children = reparent(children, self)
-        self.indices = count_indices(children)
+        self.span = count_span(children)
 
     def __len__(self):
         return len(self.children)
@@ -27,29 +25,41 @@ class block(object):
     def __iter__(self):
         return iter(self.children)
 
-    def collapse(self):
-        return [shard(0,self.tag)] + self.children + [shard(1,self.tag)]
-        
+    def __getitem__(self, index):
+        return self.children[index]
+
+    def index(self, element):
+        return self.children.index(element)
+
+    def copy(self):
+        return block(self.tag, dup(self))
+
 class lshard(object):
     dtype = 2
     parent = None    
-    indices = 0
+    span = 0
     def __init__(self, tag):
         self.tag = tag
+
+    def copy(self):
+        return lshard(self.tag)
         
 class rshard(object):
     dtype = 3
     parent = None    
-    indices = 0
+    span = 0
     def __init__(self, tag):
         self.tag = tag
+
+    def copy(self):
+        return rshard(self.tag)
 
 class document(object):
     dtype = 15
     def __init__(self, tag, children):
         self.tag = tag
         self.children = reparent(children, self)
-        self.indices = count_indices(children)
+        self.span = count_span(children)
 
     def __len__(self):
         return len(self.children)
@@ -57,17 +67,29 @@ class document(object):
     def __iter__(self):
         return iter(self.children)
 
-is_leaf = lambda(element): element.dtype == string.dtype
+    def __getitem__(self, index):
+        return self.children[index]
 
-def count_indices(elements):
-    indices = 0
-    was_leaf = False
-    for element in elements:
-        leaf = is_leaf(element)
-        if not (leaf or was_leaf):
-            indices += 1
-        indices += element.indices
-        was_leaf = leaf
-    if not was_leaf:
-        indices += 1
-    return indices
+    def index(self, element):
+        return self.children.index(element)
+
+    def copy(self):
+        return document(self.tag, dup(self))
+
+def count_span(elements):
+    span = sum(element.span for element in elements)
+    span += len(elements) + 1
+    return span
+
+def dup(elements):
+    return [element.copy() for element in elements]
+
+def reparent(children, parent):
+    for child in children:
+        child.parent = parent
+    return children
+
+def tagmerge(tag0, tag1):
+    if tag0 == tag1 or u'' in (tag0,tag1):
+        return tag0 or tag1
+    return u''

@@ -1,22 +1,23 @@
 import essence.document
+from essence.document import load, pretty_print, save, retag, wrap, unwrap
 
-err, document = essence.document.load('document/testa.csf')
+err, document = load('document/testa.csf')
 if err:
     print err
 else:
-    essence.document.pretty_print(document)
+    pretty_print(document)
 
-err, document = essence.document.load('document/module')
+err, document = load('document/module')
 if err:
     print err
 else:
-    essence.document.pretty_print(document)
+    pretty_print(document)
 
-err, document = essence.document.load('document/test.csf')
+err, document = load('document/test.csf')
 if err:
     print err
 else:
-    essence.document.pretty_print(document)
+    pretty_print(document)
 
 #document = essence.document.new([
 #    essence.document.block('add', [
@@ -29,8 +30,12 @@ else:
 if document == None:
     print "I have nothing to save"
 else:
-    essence.document.save(document, 'document/test.csf')
+    save(document, 'document/test.csf')
 
-#fingers = essence.document.count_all(items)['fingers']
-#for i in range(fingers):
-#    print essence.document.search_finger(items, i)
+retag(document, 3, 4, u'sub')
+retag(document, 4, 5, u'sub')
+retag(document, 0, 6, u'div')
+wrap(document, 3, 5)
+#unwrap(document, 3, 5)
+#essence.document.retag(document, 1, 2, u'float')
+pretty_print(document)
