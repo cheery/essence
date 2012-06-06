@@ -6,6 +6,33 @@ from graphics import rectangle, patch9, stretch, color, invert, picarea
 import selection
 selection = reload(selection)
 
+import essence.document
+from essence.document import string, block
+
+doc = essence.document.new([
+    string('var', 'a variable'),
+    string('num', 'a number'),
+])
+
+font = bitmapfont.load('font/proggy_tiny')
+
+dotsies = {
+    ' ': 0b00000, 'a': 0b10000, 'b': 0b01000, 'c': 0b00100, 'd': 0b00010,
+    'e': 0b00001, 'f': 0b11000, 'g': 0b01100, 'h': 0b00110, 'i': 0b00011,
+    'j': 0b10100, 'k': 0b01010, 'l': 0b00101, 'm': 0b10010, 'n': 0b01001,
+    'o': 0b10001, 'p': 0b11100, 'q': 0b11010, 'r': 0b10110, 's': 0b01110,
+    't': 0b01101, 'u': 0b01011, 'v': 0b00111, 'w': 0b11001, 'x': 0b10101,
+    'y': 0b10011, 'z': 0b11011,
+}
+
+def dots(screen, (x,y), text, color=(255,255,255,255), size=3):
+    for character in text:
+        pattern = dotsies.get(character, 31)
+        for i in range(5):
+            if pattern & (1 << (4-i)):
+                screen.fill(color, (x,y+size*i,size,size))
+        x += size
+
 visual_config = dict(
     left = (patch9(pygame.image.load('assets/caret.left.png'))),
     top = (patch9(pygame.image.load('assets/caret.top.png'))),
@@ -167,6 +194,11 @@ def fill(screen):
     screen.fill((20,22,10))
     for graphic, rect in output:
         graphic.blit(screen, rect)
+
+    dots(screen, (10, 140), "here be lots of dots", size=1)
+    dots(screen, (10, 170), "here be lots of dots", size=2)
+    dots(screen, (10, 200), "here be lots of dots", size=3)
+    dots(screen, (10, 230), "here be lots of dots", size=4)
 
     visual.blit_range(screen, sel.start, sel.stop, visual_config)
 #    width, height = screen.get_size()
