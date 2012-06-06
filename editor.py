@@ -20,6 +20,8 @@ class Editor(object):
 
         #TODO: mode and finger
 
+        self.cursor = len(self.document)
+
     def frame(self, screen, dt):
         screen(black)
 
@@ -30,6 +32,10 @@ class Editor(object):
         #TODO: selection = root.traverse(finger).highlight(range)
 
     def key_in(self, ch):
+        if ch.isalnum() or ch in '_.':
+            do = splice(self.cursor, self.cursor, [ch])
+            self.cursor += len(ch)
+            undo = do(self.document)
         pass #TODO: key_in(ch), pass to mode..
 
     def keydown(self, key, mod):
