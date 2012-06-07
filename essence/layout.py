@@ -1,5 +1,5 @@
 from essence.document import node
-from casuarius import Solver, ConstraintVariable
+from casuarius import Solver, ConstraintVariable, weak
 from os import urandom
 
 varying = lambda: ConstraintVariable(urandom(4).encode('hex'))
@@ -42,14 +42,17 @@ class StringFrame(Frame):
         self.valign = self.top + self.label.mathline
         self.halign = self.left
 
-    def highlight(self, start, stop):
+    def highlight_outer(self, start, stop):
         left, top, width, height = self.area
         offset0 = self.label.offsets[0 if start is None else start]
         offset1 = self.label.offsets[-1 if stop is None else stop]
-        return (left + offset0, top, offset1 - offset0 + 1, height)
+        return (left + offset0, top - 1, offset1 - offset0 + 1, height + 2)
 
     def __call__(self, screen):
         screen(self.label, self.area)
+
+    def highlight_length(self):
+        return len(self.string)
 
 class BlockFrame(Frame):
     def __init__(self, children, decorator=None):
@@ -63,10 +66,42 @@ class BlockFrame(Frame):
 
         self.valign = varying()
         self.halign = varying()
+
+    def highlight_outer(self, start, stop):
+        left, top, width, height = self.area
+        offset0 = [left, left+width][start]
+        offset1 = [left, left+width][stop]
+        return (offset0, top - 1, offset1 - offset0 + 1, height + 2)
+
+    def highlight_length(self):
+        return 1
+
+    def highlight(self, start, stop):
+        highlights = []
+        for child in self.children:
+            offset = child.highlight_length()
+            if stop >= 0 and start <= offset:
+                highlights.append(child.highlight_outer(max(start,0), min(stop,offset)))
+            start -= offset
+            stop -= offset
+        if len(highlights) == 0:
+            x, y, width, height = self.area
+            highlights.append((x + width / 2, y-1, 1, height+2))
+        return highlights
+        
+    def traverse(self, finger, index=0):
+        if index >= len(finger):
+            return self
+        base = finger[index]
+        for child in self.children:
+            if base == 0:
+                return child.traverse(finger, index+1)
+            base -= child.highlight_length()
+        return None
     
     def __call__(self, screen):
         if self.decorator:
-            screen(self.decorator, self.area)
+            screen.add(self.decorator, self.area)
         for child in self.children:
             child(screen)
 
@@ -90,7 +125,9 @@ class Root(BlockFrame):
         BlockFrame.__init__(self, children)
         self.solver = Solver()
 
-    def satisfy(self, rule):
+    def satisfy(self, rule, strength=None):
+        if strength is not None:
+            rule.strength = strength
         self.solver.add_constraint(rule)
 
 def row_layout(this, children, satisfy):
@@ -106,6 +143,13 @@ def row_layout(this, children, satisfy):
             #satisfy(last.bottom <= child.top - 8)
         last = child
     satisfy(this.halign == this.left)
+    satisfy(this.width >= 20)
+    satisfy(this.height >= 20)
+    satisfy(this.valign >= this.top + 20)
+    satisfy(this.valign <= this.bottom - 20)
+
+    satisfy(this.width == 0, weak)
+    satisfy(this.height == 0, weak)
     #satisfy(this.valign == (this.top + this.bottom) / 2)
 
 def layout_blob(blob, font, unk_color, satisfy):

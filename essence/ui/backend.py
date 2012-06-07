@@ -81,9 +81,25 @@ class surface(object):
     def __call__(self, which, area=None):
         area = area if area else (0,0, self.width, self.height)
         which.paint_on(self.pys, area)
+        return self
 
-    def paint_on(self, pys, area):
-        pys.blit(pygame.transform.scale(self.pys, area[2:4]), area)
+    def mul(self, which, area=None):
+        area = area if area else (0,0, self.width, self.height)
+        which.paint_on(self.pys, area, pygame.BLEND_MULT)
+        return self
+
+    def add(self, which, area=None):
+        area = area if area else (0,0, self.width, self.height)
+        which.paint_on(self.pys, area, pygame.BLEND_ADD)
+        return self
+
+    def sub(self, which, area=None):
+        area = area if area else (0,0, self.width, self.height)
+        which.paint_on(self.pys, area, pygame.BLEND_SUB)
+        return self
+
+    def paint_on(self, pys, area, special=0):
+        pys.blit(pygame.transform.scale(self.pys, (int(area[2]), int(area[3]))), area)
 
 class label(surface):
     def __init__(self, pys, offsets, baseline, mathline):
@@ -99,8 +115,8 @@ class color(object):
         self.b = b
         self.a = a
     
-    def paint_on(self, pys, area):
-        pys.fill((self.r,self.g,self.b,self.a), area)
+    def paint_on(self, pys, area, special=0):
+        pys.fill((self.r,self.g,self.b,self.a), area, special)
 
 def empty(width, height):
     if width == 0:

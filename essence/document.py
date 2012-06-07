@@ -99,9 +99,12 @@ class collapse(object):
 
 # application of change record:     undo = do(tree.traverse(finger))
 can_walk_up = lambda tree, finger: len(finger) > 0
-can_walk_down = lambda tree, finger, index: isinstance(tree.traverse(finger)[index], node)
 can_walk_left = lambda tree, finger, index: index > 0
 can_walk_right = lambda tree, finger, index: index < len(tree.traverse(finger))
+
+def can_walk_down(tree, finger, index):
+    there = tree.traverse(finger)
+    return 0 <= index < len(there) and isinstance(there[index], node)
 
 def serialize(tree):
     """
