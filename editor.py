@@ -1,6 +1,7 @@
 from essence.ui import color, window, get, eventloop, empty
 from essence.document import node, copy, splice, build, collapse, serialize, deserialize, can_walk_up, can_walk_down, can_walk_left, can_walk_right
 from essence.layout import StringFrame, BlockFrame, ImageFrame, generate_frames
+from random import randint
 
 black = color(0x00, 0x00, 0x00)
 yellow = color(0x20, 0x20, 0x10)
@@ -37,6 +38,7 @@ class Selection(object):
     start = property(lambda self: min(self.cursor, self.tail))
     stop = property(lambda self: max(self.cursor, self.tail))
     top = property(lambda self: self.document.traverse(self.finger))
+    context = property(lambda self: self.document.context(self.finger))
 
     def isinside(self, index):
         return 0 <= index <= len(self.top)
@@ -47,6 +49,32 @@ class Selection(object):
     def can_ascend(self):
         return len(self.finger) > 0
 
+class ContextVisual(object):
+    def __init__(self, sel, font):
+        self.cols = []
+        self.height = 32
+        self.width = 0
+        for item in sel.context:
+            if self.width != 0:
+                self.width += 10
+            tagl = font(item.tag)
+            uidl = font(repr(item.uid))
+            width = max(tagl.width, uidl.width)
+            self.cols.append((tagl, uidl, width))
+            self.width += width
+    
+    def __call__(self, screen):
+        x = screen.width - self.width - 10
+        y = screen.height - 32
+        for tagl, uidl, width in self.cols:
+            p = (width - tagl.width) / 2
+            area = x + p, y + 10 - tagl.baseline, tagl.width, tagl.height
+            screen(tagl, area)
+            p = (width - uidl.width) / 2
+            area = x + p, y + 26 - uidl.baseline, uidl.width, uidl.height
+            screen(uidl, area)
+            x += width + 10
+
 class Editor(object):
     def __init__(self):
         self.window = window()
@@ -56,6 +84,7 @@ class Editor(object):
         self.window.show()
         
         self.font = get('font/proggy_tiny', 'font')
+        self.border = get('assets/border.png', 'patch-9')
 
         self.document = node(['t', 'y', 'p', 'e', node(['h', 'e', 'r', 'e'], 'var')], 'root', 0)
 
@@ -64,13 +93,15 @@ class Editor(object):
     def frame(self, screen, dt):
         screen(black)
 
-        root = generate_frames(self.document, self.font, dark_gray)
+        root = generate_frames(self.document, self.font, self.border) #dark_gray)
         root.decorator = dark_gray
         root(screen)
 
         highlight = root.traverse(self.sel.finger).highlight(self.sel.start, self.sel.stop)
         for area in highlight:
             screen.mul(almost_white, area).add(about_blue, area)
+        
+        ContextVisual(self.sel, self.font)(screen)
 
     def key_in(self, ch):
         sel = self.sel
@@ -94,7 +125,7 @@ class Editor(object):
         if name == 'down':
             while sel.isinside(sel.cursor + 1):
                 sel.cursor += 1
-                if sel.can_descend(sel.cursor):
+                if sel.can_descend(sel.cursor) or sel.can_descend(sel.cursor-1):
                     break
             if not mod & SHIFT:
                 sel.tail = sel.cursor
@@ -116,7 +147,7 @@ class Editor(object):
             sel.cursor = sel.tail = sel.finger.pop(-1) + (1 - bool(mod & SHIFT))
         if name == 'tab':
             base = sel.start
-            undo0 = splice(base, sel.stop, [node([], 'unk')])(sel.top)
+            undo0 = splice(base, sel.stop, [node([], 'unk', randint(1, 10**10))])(sel.top)
             sel.finger.append(base)
             undo1 = splice(0, 0, undo0.blob)(sel.top)
             sel.cursor -= base
