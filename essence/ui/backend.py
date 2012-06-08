@@ -9,8 +9,85 @@ def get(path, mode='img'):
             surface(pygame.image.load(path + "/bitmap.png")),
             json.load(open(path + "/metadata.json")),
         )
-        pygame
-        pass
+    if mode == 'patch-9':
+        return patch9(surface(pygame.image.load(path)))
+
+class composite(object):
+    pass
+
+def borders(surface):
+    width = surface.width
+    height = surface.height
+    y0 = 0
+    y1 = 0
+    x0 = 0
+    x1 = 0
+    i = 0
+    while i < height:
+        r,g,b,a = surface.at((0,i))
+        if a > 0:
+            y0 = i
+            break
+        i += 1
+    while i < height:
+        r,g,b,a = surface.at((0,i))
+        if a == 0:
+            y1 = i
+            break
+        i += 1
+    i = 0
+    while i < width:
+        r,g,b,a = surface.at((i,0))
+        if a > 0:
+            x0 = i
+            break
+        i += 1
+    while i < width:
+        r,g,b,a = surface.at((i,0))
+        if a == 0:
+            x1 = i
+            break
+        i += 1
+    return [1, x0, x1, width], [1, y0, y1, height]
+
+    
+    def blit(self, screen, rect):
+        x, y = rect.left, rect.top
+        w2, h2 = rect.width, rect.height
+        (w0,h0), (w1,h1) = self.padding
+        xs = [x, x+w0, x+w2-w1, x+w2]
+        ys = [y, y+h0, y+h2-h1, y+h2]
+        for index, piece in enumerate(self.pieces):
+            j, k = index % 3, index / 3
+            x0,x1,y0,y1 = xs[j], xs[j+1], ys[k], ys[k+1]
+            size = max(0, x1-x0), max(0, y1-y0)
+            surface = pygame.transform.smoothscale(piece, size)
+            screen.blit(surface, (x0,y0))
+
+class patch9(composite):
+    def __init__(self, surface):
+        self.surface = surface
+        self.subsurfaces = []
+        h, v = borders(surface)
+        for y in range(3):
+            row = []
+            for x in range(3):
+                area = h[x], v[y], h[x+1]-h[x], v[y+1]-v[y]
+                row.append(surface.subsurface(area))
+            self.subsurfaces.append(row)
+        self.padding = h[1]-h[0], v[1]-v[0], h[3]-h[2], v[3]-v[2]
+
+    def __call__(self, target, area, op):
+        left, top, right, bottom = self.padding
+        h0, v0 = area[0], area[1]
+        h3, v3 = area[2] + h0, area[3] + v0
+        h = [h0, h0+left, h3-right, h3] 
+        v = [v0, v0+top, v3-bottom, v3]
+        for y, row in enumerate(self.subsurfaces):
+            for x, surface in enumerate(row):
+                sector = h[x], v[y], h[x+1]-h[x], v[y+1]-v[y]
+                target(surface, sector, op)
+        return target
 
 class font(object):
     def __init__(self, surface, metadata):
@@ -70,6 +147,13 @@ class surface(object):
     def subsurface(self, area):
         return surface(self.pys.subsurface(area))
 
+    def at(self, pos):
+        return self.pys.get_at(pos)
+
+    @property
+    def data(self):
+        return pygame.PixelArray(self.pys)
+
     @property
     def width(self):
         return self.pys.get_size()[0]
@@ -78,25 +162,21 @@ class surface(object):
     def height(self):
         return self.pys.get_size()[1]
 
-    def __call__(self, which, area=None):
+    def __call__(self, which, area=None, op=0):
+        if isinstance(which, composite):
+            return which(self, area, op)
         area = area if area else (0,0, self.width, self.height)
-        which.paint_on(self.pys, area)
+        which.paint_on(self.pys, area, op)
         return self
 
     def mul(self, which, area=None):
-        area = area if area else (0,0, self.width, self.height)
-        which.paint_on(self.pys, area, pygame.BLEND_MULT)
-        return self
+        return self(which, area, pygame.BLEND_MULT)
 
     def add(self, which, area=None):
-        area = area if area else (0,0, self.width, self.height)
-        which.paint_on(self.pys, area, pygame.BLEND_ADD)
-        return self
+        return self(which, area, pygame.BLEND_ADD)
 
     def sub(self, which, area=None):
-        area = area if area else (0,0, self.width, self.height)
-        which.paint_on(self.pys, area, pygame.BLEND_SUB)
-        return self
+        return self(which, area, pygame.BLEND_SUB)
 
     def paint_on(self, pys, area, special=0):
         pys.blit(pygame.transform.scale(self.pys, (int(area[2]), int(area[3]))), area)
