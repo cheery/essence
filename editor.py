@@ -2,6 +2,8 @@ from essence.ui import color, window, get, eventloop, empty
 from essence.document import node, copy, splice, build, collapse, serialize, deserialize, can_walk_up, can_walk_down, can_walk_left, can_walk_right
 from essence.layout import StringFrame, BlockFrame, ImageFrame, generate_frames
 from random import randint
+from sys import argv, exit
+import os
 
 black = color(0x00, 0x00, 0x00)
 yellow = color(0x20, 0x20, 0x10)
@@ -21,9 +23,12 @@ keybindings = {
     pygame.K_SPACE: 'space',
     pygame.K_TAB: 'tab',
     pygame.K_ESCAPE: 'escape',
+    pygame.K_s: 's',
+    pygame.K_q: 'q',
 }
 
 SHIFT = pygame.KMOD_SHIFT
+CTRL = pygame.KMOD_CTRL
 #KMOD_NONE, KMOD_LSHIFT, KMOD_RSHIFT, KMOD_SHIFT, KMOD_CAPS,
 #KMOD_LCTRL, KMOD_RCTRL, KMOD_CTRL, KMOD_LALT, KMOD_RALT,
 #KMOD_ALT, KMOD_LMETA, KMOD_RMETA, KMOD_META, KMOD_NUM, KMOD_MODE
@@ -86,9 +91,20 @@ class Editor(object):
         self.font = get('font/proggy_tiny', 'font')
         self.border = get('assets/border.png', 'patch-9')
 
-        self.document = node(['t', 'y', 'p', 'e', node(['h', 'e', 'r', 'e'], 'var')], 'root', 0)
+        self.document = node([], 'root', 0)
+
+        if len(argv) > 1 and os.path.exists(argv[1]):
+            self.document = deserialize(open(argv[1]).read())
+
+        #self.document = node(['t', 'y', 'p', 'e', node(['h', 'e', 'r', 'e'], 'var')], 'root', 0)
 
         self.sel = Selection(self.document)
+
+    def save(self, path): # this saving method cannot be trusted, although it tries to not crash.
+        data = serialize(self.document)
+        fd = open(path, 'w')
+        fd.write(data)
+        fd.close()
 
     def frame(self, screen, dt):
         screen(black)
@@ -146,12 +162,17 @@ class Editor(object):
         if name == 'space' and sel.can_ascend():
             sel.cursor = sel.tail = sel.finger.pop(-1) + (1 - bool(mod & SHIFT))
         if name == 'tab':
+            #TODO: uuuh.. there was a single OPERATION for this! >X-(
             base = sel.start
             undo0 = splice(base, sel.stop, [node([], 'unk', randint(1, 10**10))])(sel.top)
             sel.finger.append(base)
             undo1 = splice(0, 0, undo0.blob)(sel.top)
             sel.cursor -= base
             sel.tail -= base
+        if name == 's' and mod & CTRL:
+            self.save(argv[1])
+        if name == 'q' and mod & CTRL:
+            exit(0) #TODO: provide modified -flag
 
         pass #TODO: keydown(key, mod, unicode), map to keybind, pass to mode..
 
