@@ -14,7 +14,7 @@ class node(object):
     """
     A document node. May contain characters and other nodes.
     """
-    def __init__(self, children, tag=None, uid=None):
+    def __init__(self, children, tag=None, uid=0):
         self.children = children
         self.tag = tag
         self.uid = uid
@@ -96,6 +96,24 @@ class collapse(object):
         collapse = blob[self.offset]
         blob[self.offset:self.offset+1] = collapse
         return build(self.offset, len(collapse), collapse.tag, collapse.uid)
+
+class rename(object):
+    """
+    Rename context topmost (finger)
+    """
+    def __init__(self, tag=None, uid=None):
+        self.tag = tag
+        self.uid = uid
+
+    def __call__(self, element):
+        prev_tag = prev_uid = None
+        if self.tag is not None:
+            prev_tag = element.tag
+            element.tag = self.tag
+        if self.uid is not None:
+            prev_uid = element.uid
+            element.uid = self.uid
+        return rename(prev_tag, prev_uid)
 
 # application of change record:     undo = do(tree.traverse(finger))
 can_walk_up = lambda tree, finger: len(finger) > 0

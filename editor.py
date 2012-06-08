@@ -1,5 +1,5 @@
 from essence.ui import color, window, get, eventloop, empty
-from essence.document import node, copy, splice, build, collapse, serialize, deserialize, can_walk_up, can_walk_down, can_walk_left, can_walk_right
+from essence.document import node, copy, splice, build, collapse, rename, serialize, deserialize, can_walk_up, can_walk_down, can_walk_left, can_walk_right
 from essence.layout import StringFrame, BlockFrame, ImageFrame, generate_frames
 from random import randint
 from sys import argv, exit
