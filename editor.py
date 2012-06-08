@@ -1,6 +1,8 @@
 from essence.ui import color, window, get, eventloop, empty
 from essence.document import node, copy, splice, build, collapse, rename, serialize, deserialize, can_walk_up, can_walk_down, can_walk_left, can_walk_right
 from essence.layout import StringFrame, BlockFrame, ImageFrame, generate_frames
+from essence.buffer import Buffer
+from essence.selection import Selection
 from random import randint
 from sys import argv, exit
 import os
@@ -25,6 +27,8 @@ keybindings = {
     pygame.K_ESCAPE: 'escape',
     pygame.K_s: 's',
     pygame.K_q: 'q',
+    pygame.K_u: 'u',
+    pygame.K_r: 'r',
 }
 
 SHIFT = pygame.KMOD_SHIFT
@@ -32,27 +36,6 @@ CTRL = pygame.KMOD_CTRL
 #KMOD_NONE, KMOD_LSHIFT, KMOD_RSHIFT, KMOD_SHIFT, KMOD_CAPS,
 #KMOD_LCTRL, KMOD_RCTRL, KMOD_CTRL, KMOD_LALT, KMOD_RALT,
 #KMOD_ALT, KMOD_LMETA, KMOD_RMETA, KMOD_META, KMOD_NUM, KMOD_MODE
-
-class Selection(object):
-    def __init__(self, document):
-        self.document = document
-        self.finger = []
-        self.cursor = 0
-        self.tail = 0
-
-    start = property(lambda self: min(self.cursor, self.tail))
-    stop = property(lambda self: max(self.cursor, self.tail))
-    top = property(lambda self: self.document.traverse(self.finger))
-    context = property(lambda self: self.document.context(self.finger))
-
-    def isinside(self, index):
-        return 0 <= index <= len(self.top)
-
-    def can_descend(self, index):
-        return can_walk_down(self.document, self.finger, index)
-
-    def can_ascend(self):
-        return len(self.finger) > 0
 
 class ContextVisual(object):
     def __init__(self, sel, font):
@@ -91,29 +74,28 @@ class Editor(object):
         self.font = get('font/proggy_tiny', 'font')
         self.border = get('assets/border.png', 'patch-9')
 
-        self.document = node([], 'root', 0)
-
+        document = node([], 'root', 0)
         if len(argv) > 1 and os.path.exists(argv[1]):
-            self.document = deserialize(open(argv[1]).read())
+            document = deserialize(open(argv[1]).read())
 
-        #self.document = node(['t', 'y', 'p', 'e', node(['h', 'e', 'r', 'e'], 'var')], 'root', 0)
-
-        self.sel = Selection(self.document)
-
-    def save(self, path): # this saving method cannot be trusted, although it tries to not crash.
-        data = serialize(self.document)
-        fd = open(path, 'w')
-        fd.write(data)
-        fd.close()
+        self.buf = Buffer(
+            document = document,
+            history = ([],[]),
+            filename = argv[1] if len(argv) > 1 else None,
+        )
+        self.sel = self.buf.sel = Selection(self.buf)
 
     def frame(self, screen, dt):
         screen(black)
 
-        root = generate_frames(self.document, self.font, self.border) #dark_gray)
-        root.decorator = dark_gray
+        construct_frame = lambda document: generate_frames(document, self.font, self.border)
+
+        root = self.buf(screen, construct_frame)
+        root.decorator = dark_gray # tiny hack, removed later.
         root(screen)
 
-        highlight = root.traverse(self.sel.finger).highlight(self.sel.start, self.sel.stop)
+        sel = self.sel
+        highlight = sel.buf.root_frame.traverse(sel.finger).highlight(sel.start, sel.stop)
         for area in highlight:
             screen.mul(almost_white, area).add(about_blue, area)
         
@@ -122,10 +104,8 @@ class Editor(object):
     def key_in(self, ch):
         sel = self.sel
         if ch.isalnum() or ch in '_.':
-            do = splice(sel.start, sel.stop, [ch])
-            sel.cursor += len(ch)
-            sel.tail = sel.cursor
-            undo = do(sel.top)
+            sel.buf.do(sel.finger, splice(sel.start, sel.stop, [ch]))
+            sel.tail = sel.cursor = sel.start + len(ch)
         pass #TODO: key_in(ch), pass to mode..
 
     def keydown(self, key, mod):
@@ -154,25 +134,29 @@ class Editor(object):
             if not mod & SHIFT:
                 sel.tail = sel.cursor
         if name == 'enter' and sel.can_descend(sel.cursor):
-            sel.finger.append(sel.cursor)
+            sel.finger = sel.finger + (sel.cursor,)
             sel.cursor = sel.tail = len(sel.top) if mod & SHIFT else 0
         elif name == 'enter' and sel.can_descend(sel.cursor - 1):
-            sel.finger.append(sel.cursor - 1)
+            sel.finger = sel.finger + (sel.cursor - 1,)
             sel.cursor = sel.tail = len(sel.top) if mod & SHIFT else 0
         if name == 'space' and sel.can_ascend():
             sel.cursor = sel.tail = sel.finger.pop(-1) + (1 - bool(mod & SHIFT))
         if name == 'tab':
-            #TODO: uuuh.. there was a single OPERATION for this! >X-(
             base = sel.start
-            undo0 = splice(base, sel.stop, [node([], 'unk', randint(1, 10**10))])(sel.top)
-            sel.finger.append(base)
-            undo1 = splice(0, 0, undo0.blob)(sel.top)
+            sel.buf.do(sel.finger, build(sel.start, sel.stop, 'unk', randint(1, 10**10)))
+            sel.finger = sel.finger + (base,)
             sel.cursor -= base
             sel.tail -= base
         if name == 's' and mod & CTRL:
-            self.save(argv[1])
-        if name == 'q' and mod & CTRL:
-            exit(0) #TODO: provide modified -flag
+            sel.buf.save()
+        if name == 'q' and mod & CTRL and not sel.buf.modified:
+            exit(0)
+        if name == 'q' and mod & CTRL and mod & SHIFT:
+            exit(0)
+        if name == 'u' and mod & CTRL:
+            sel.buf.undo()
+        if name == 'r' and mod & CTRL:
+            sel.buf.redo()
 
         pass #TODO: keydown(key, mod, unicode), map to keybind, pass to mode..
 
