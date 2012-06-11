@@ -1,1 +1,53 @@
 IRC: Freenode.net#essence
+
+== Dependencies ==
+
+You need casuarius and pygame to run the editor.
+
+== How Does the Editor Function? ==
+
+The commandline syntax to start it is:
+
+    python editor.py [filename]
+
+If a filename is given, the editor attempts to load the file.
+In case of failure it will likely crash. Otherwise, a window appears.
+
+== Keybindings ==
+
+=== Navigation ===
+
+For navigation commands you can keep shift down, and it will select the elements.
+
+    up              walk to the last node boundary
+    down            walk to the next node boundary
+    left            walk to the last boundary
+    right           walk to the next boundary
+
+=== Traversal (Navigation) ===
+
+    enter           descends to an element under cursor, goes to the first node boundary within element
+    ^enter          descends to the last node boundary within element
+    space           ascends from the element
+    ^space          ascends from the element, but from front side
+
+=== System ===
+
+    C-s             Saves the document with it's filename
+    C-q             quits the document if not modified
+    C-Q             quits without saving the document
+
+=== Modification ===
+
+    C-u             undo last action
+    C-r             redo last undoed action
+
+    C-a             select all
+
+    C-y             yank the selection
+    C-delete        yank and delete the selection
+    C-insert        insert the selection over existing selection
+
+    tab             builds an element from the selection, with tag 'unk'
+    delete          delete selection or next symbol|node
+    backspace       delete selection or last symbol|node
