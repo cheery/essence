@@ -32,6 +32,7 @@ keybindings = {
     pygame.K_u: 'u',
     pygame.K_r: 'r',
     pygame.K_y: 'y',
+    pygame.K_n: 'n',
     pygame.K_DELETE: 'delete',
     pygame.K_BACKSPACE: 'backspace',
     pygame.K_INSERT: 'insert',
@@ -90,26 +91,60 @@ class Editor(object):
             filename = argv[1] if len(argv) > 1 else None,
         )
         self.sel = self.buf.sel = Selection(self.buf)
+        self.new_console()
+
+    def new_console(self):
+        self.console = Buffer(
+            node([], 'console', 0),
+            history = ([],[]),
+        )
+        self.console.sel = Selection(self.console)
+        return self.console
 
     def frame(self, screen, dt):
         screen(black)
 
         construct_frame = lambda document: generate_frames(document, self.font, self.border)
 
-        root = self.buf(screen, construct_frame)
-        root.decorator = dark_gray # tiny hack, removed later.
-        root(screen)
+        if self.sel == self.console.sel:
+            width, height = screen.width, screen.height
+            frames = {
+#                self.buf: (0, 0, width, height - 64),
+#                self.console: (0, height - 64, width, 64),
+                self.console: (0, 0, width, height),
+            }
+        else:
+            frames = {
+                self.buf: (0, 0, screen.width, screen.height),
+            }
+        canvases = {}
+        for buf, area in frames.items():
+            canvas = empty(area[2], area[3])
+            root = buf(screen, construct_frame)
+            root.decorator = dark_gray # tiny hack, removed later.
+            root(canvas)
+            canvases[buf] = canvas
 
         sel = self.sel
         highlight = sel.buf.root_frame.traverse(sel.finger).highlight(sel.start, sel.stop)
         for area in highlight:
-            screen.mul(almost_white, area).add(about_blue, area)
+            canvases[sel.buf](about_blue, area) #.mul(almost_white, area).add(about_blue, area)
+
+        for buf in frames:
+            screen(canvases[buf], frames[buf])
         
         ContextVisual(self.sel, self.font)(screen)
 
         caption, iconname = pygame.display.get_caption()
         if self.buf.caption != caption:
             pygame.display.set_caption(self.buf.caption, 'upi')
+
+    def interpret(self, command):
+        if len(command) != 3: # a cheap hack.
+            return
+        new_tag = ''.join(command[2])
+        sel = self.sel
+        sel.buf.do(sel.finger, rename(new_tag))
 
     def key_in(self, ch):
         sel = self.sel
@@ -121,6 +156,12 @@ class Editor(object):
     def keydown(self, key, mod):
         sel = self.sel
         name = keybindings.get(key)
+
+        context = [item.tag for item in sel.context]
+        if name == 'enter' and ('console' in context):
+            self.sel = self.buf.sel
+            self.interpret(self.console.document)
+
         if name == 'up':
             while sel.isinside(sel.cursor - 1):
                 sel.cursor -= 1
@@ -193,6 +234,15 @@ class Editor(object):
                 scrap.put(pygame.SCRAP_TEXT, serialize(blob))
             sel.buf.do(sel.finger, splice(sel.start, sel.stop, []))
             sel.stop = sel.start
+        if name == 'n' and mod & CTRL and len(context) > 0:
+            console = self.new_console()
+            self.sel = console.sel
+            rename_symbol = node(['r','e','n','a','m','e'], 'action', randint(1, 10**10))
+            selection_symbol = node(['t','o','p'], 'symbol', randint(1, 10**10))
+            slot = node([], 'str', randint(1, 10**10))
+            console.do(console.sel.finger, splice(0, 0, [rename_symbol, selection_symbol, slot]))
+            console.sel.finger = (2,)
+            console.sel.current = console.sel.tail = 0
         pass #TODO: keydown(key, mod, unicode), map to keybind, pass to mode..
 
 if __name__ == "__main__":
