@@ -267,7 +267,7 @@ def dispatch_event(event):
     if event.type == pygame.MOUSEBUTTONUP:
         window.visible.send('mousebuttonup', event.pos, event.button)
 
-def eventloop():
+def eventloop(use_scrap=False):
     pygame.display.init()
     screen = None
     dt, now = 0, time()
@@ -280,6 +280,9 @@ def eventloop():
         if window.dirty:
             if window.visible:
                 screen = set_mode_by(window.visible)
+                if use_scrap:
+                    pygame.scrap.init()
+                    use_scrap = False
             elif screen != None:
                 pygame.display.quit()
                 pygame.display.init()

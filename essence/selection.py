@@ -1,4 +1,4 @@
-from document import can_walk_down
+from document import can_walk_down, copy
 
 class Selection(object):
     def __init__(self, buf):

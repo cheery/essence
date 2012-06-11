@@ -5,6 +5,7 @@ from essence.buffer import Buffer
 from essence.selection import Selection
 from random import randint
 from sys import argv, exit
+from pygame import scrap
 import os
 
 black = color(0x00, 0x00, 0x00)
@@ -30,8 +31,10 @@ keybindings = {
     pygame.K_q: 'q',
     pygame.K_u: 'u',
     pygame.K_r: 'r',
+    pygame.K_y: 'y',
     pygame.K_DELETE: 'delete',
     pygame.K_BACKSPACE: 'backspace',
+    pygame.K_INSERT: 'insert',
 }
 
 SHIFT = pygame.KMOD_SHIFT
@@ -174,8 +177,24 @@ class Editor(object):
         if name == 'a' and mod & CTRL:
             sel.start = 0
             sel.stop = len(sel.top)
+        if name == 'y' and mod & CTRL:
+            blob = sel.yank()
+            if len(blob) > 0:
+                scrap.put(pygame.SCRAP_TEXT, serialize(blob))
+        if name == 'insert' and mod & CTRL:
+            data = scrap.get(pygame.SCRAP_TEXT)
+            if data:
+                blob = deserialize(data)
+                sel.buf.do(sel.finger, splice(sel.start, sel.stop, blob))
+                sel.cursor = sel.tail = sel.start + len(blob)
+        if name == 'delete' and mod & CTRL:
+            blob = sel.yank()
+            if len(blob) > 0:
+                scrap.put(pygame.SCRAP_TEXT, serialize(blob))
+            sel.buf.do(sel.finger, splice(sel.start, sel.stop, []))
+            sel.stop = sel.start
         pass #TODO: keydown(key, mod, unicode), map to keybind, pass to mode..
 
 if __name__ == "__main__":
     editor = Editor()
-    eventloop()
+    eventloop(use_scrap=True)

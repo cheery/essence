@@ -135,6 +135,8 @@ def serialize(tree):
                 "uid":obj.uid,
                 "blob":[break_to_lists(child) for child in obj],
             }
+        if isinstance(obj, list):
+            return [break_to_lists(child) for child in obj]
         return obj
     return json.dumps(break_to_lists(tree))
 
@@ -145,5 +147,7 @@ def deserialize(data):
     def wrap_to_nodes(this):
         if isinstance(this, dict):
             return node([wrap_to_nodes(child) for child in this["blob"]], this["tag"], this["uid"])
+        if isinstance(this, list):
+            return [wrap_to_nodes(child) for child in this]
         return this
     return wrap_to_nodes(json.loads(data))
