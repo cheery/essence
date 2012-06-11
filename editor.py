@@ -25,10 +25,13 @@ keybindings = {
     pygame.K_SPACE: 'space',
     pygame.K_TAB: 'tab',
     pygame.K_ESCAPE: 'escape',
+    pygame.K_a: 'a',
     pygame.K_s: 's',
     pygame.K_q: 'q',
     pygame.K_u: 'u',
     pygame.K_r: 'r',
+    pygame.K_DELETE: 'delete',
+    pygame.K_BACKSPACE: 'backspace',
 }
 
 SHIFT = pygame.KMOD_SHIFT
@@ -101,6 +104,10 @@ class Editor(object):
         
         ContextVisual(self.sel, self.font)(screen)
 
+        caption, iconname = pygame.display.get_caption()
+        if self.buf.caption != caption:
+            pygame.display.set_caption(self.buf.caption, 'upi')
+
     def key_in(self, ch):
         sel = self.sel
         if ch.isalnum() or ch in '_.':
@@ -140,7 +147,8 @@ class Editor(object):
             sel.finger = sel.finger + (sel.cursor - 1,)
             sel.cursor = sel.tail = len(sel.top) if mod & SHIFT else 0
         if name == 'space' and sel.can_ascend():
-            sel.cursor = sel.tail = sel.finger.pop(-1) + (1 - bool(mod & SHIFT))
+            sel.cursor = sel.tail = sel.finger[-1] + (1 - bool(mod & SHIFT))
+            sel.finger = sel.finger[:-1]
         if name == 'tab':
             base = sel.start
             sel.buf.do(sel.finger, build(sel.start, sel.stop, 'unk', randint(1, 10**10)))
@@ -157,7 +165,15 @@ class Editor(object):
             sel.buf.undo()
         if name == 'r' and mod & CTRL:
             sel.buf.redo()
-
+        if name in ('delete', 'backspace'):
+            offset = ('backspace', 'delete').index(name)*2 - 1
+            if sel.cursor == sel.tail and sel.isinside(sel.cursor + offset):
+                sel.cursor += offset
+            sel.buf.do(sel.finger, splice(sel.start, sel.stop, []))
+            sel.tail = sel.cursor = sel.start
+        if name == 'a' and mod & CTRL:
+            sel.start = 0
+            sel.stop = len(sel.top)
         pass #TODO: keydown(key, mod, unicode), map to keybind, pass to mode..
 
 if __name__ == "__main__":

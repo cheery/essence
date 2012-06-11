@@ -9,6 +9,10 @@ class Buffer(object):
         self.next_moid = 1
 
     @property
+    def caption(self):
+        return (self.filename or "[No Name]") + (' [+]' if self.modified else '')
+
+    @property
     def modified(self):
         return self.moid != self.prev_moid
 

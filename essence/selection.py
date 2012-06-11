@@ -1,3 +1,5 @@
+from document import can_walk_down
+
 class Selection(object):
     def __init__(self, buf):
         self.buf = buf
@@ -6,8 +8,24 @@ class Selection(object):
         self.cursor = 0
         self.tail = 0
 
-    start = property(lambda self: min(self.cursor, self.tail))
-    stop = property(lambda self: max(self.cursor, self.tail))
+    def _get_start(self):
+        return min(self.cursor, self.tail)
+    def _get_stop(self):
+        return max(self.cursor, self.tail)
+    def _set_start(self, value):
+        if self.cursor < self.tail:
+            self.cursor = value
+        else:
+            self.tail = value
+
+    def _set_stop(self, value):
+        if self.cursor < self.tail:
+            self.tail = value
+        else:
+            self.cursor = value
+
+    start = property(_get_start, _set_start)
+    stop = property(_get_stop, _set_stop)
     top = property(lambda self: self.document.traverse(self.finger))
     context = property(lambda self: self.document.context(self.finger))
 
