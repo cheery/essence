@@ -1,3 +1,5 @@
+from document import deserialize, serialize
+
 class Buffer(object):
     def __init__(self, document, history, root_frame=None, sel=None, filename=None):
         self.document = document
