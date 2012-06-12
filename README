@@ -10,7 +10,7 @@ The commandline syntax to start it is:
 
     python editor.py [filename]
 
-If a filename is given, the editor attempts to load the file.
+If a filename is given and it exists, the editor attempts to load the file.
 In case of failure it will likely crash. Otherwise, a window appears.
 
 == Keybindings ==
