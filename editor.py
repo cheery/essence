@@ -17,6 +17,7 @@ from essence.document import node, copy, splice, build, collapse, rename, serial
 from essence.layout import StringFrame, BlockFrame, ImageFrame, generate_frames
 from essence.buffer import Buffer
 from essence.selection import Selection
+from essence.pluginmanager import default_plugin_directory, load_all_plugins
 from random import randint
 from sys import argv, exit
 from pygame import scrap
@@ -107,6 +108,27 @@ class Editor(object):
         self.sel = self.buf.sel = Selection(self.buf)
         self.new_console()
 
+        self.plugins = []
+        for module in load_all_plugins([default_plugin_directory]):
+            if not hasattr(module, 'plugins'):
+                continue
+            for plugin in module.plugins:
+                self.plugins.append(plugin(self))
+        self.plugins.sort(key=lambda obj: obj.priority)
+
+    def key(self, context, sel, name, modifiers, ch):
+        for plugin in self.plugins:
+            if plugin.key(context, sel, name, modifiers, ch):
+                return True
+        return False
+
+    def visualise(self, context, obj, y):
+        for plugin in self.plugins:
+            frame = plugin.visualise(context, obj, y)
+            if frame is not None:
+                return frame
+        # return some default instead
+
     def new_console(self):
         self.console = Buffer(
             node([], 'console', 0),
@@ -167,11 +189,18 @@ class Editor(object):
             sel.tail = sel.cursor = sel.start + len(ch)
         pass #TODO: key_in(ch), pass to mode..
 
-    def keydown(self, key, mod):
+    def keydown(self, key, mod, ch):
         sel = self.sel
         name = keybindings.get(key)
-
         context = [item.tag for item in sel.context]
+        modifiers = []
+        if mod & SHIFT:
+            modifiers.append('shift')
+        if mod & CTRL:
+            modifiers.append('ctrl')
+        if self.key(context, sel, name, modifiers, ch):
+            return
+
         if name == 'enter' and ('console' in context):
             self.sel = self.buf.sel
             self.interpret(self.console.document)

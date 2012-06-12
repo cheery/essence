@@ -61,6 +61,17 @@ class node(object):
         children = [copy(child) for child in self]
         return node(children, self.tag, self.uid)
 
+    def cluster(self):
+        string = ''
+        for child in self:
+            if isinstance(child, node):
+                if len(string) > 0:
+                    yield string
+                    string = ''
+                yield child
+            else:
+                string += child
+
 def copy(tree):
     """
     Make an unique copy of the entire tree.

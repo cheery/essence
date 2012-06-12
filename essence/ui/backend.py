@@ -269,7 +269,7 @@ def dispatch_event(event):
         window.visible.send('resize', event.w, event.h)
         window.dirty = True
     if event.type == pygame.KEYDOWN:
-        window.visible.send('keydown', event.key, event.mod)
+        window.visible.send('keydown', event.key, event.mod, event.unicode)
         if event.unicode:
             window.visible.send('key', event.unicode)
     if event.type == pygame.KEYUP:
