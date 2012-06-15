@@ -61,7 +61,8 @@ class node(object):
         children = [copy(child) for child in self]
         return node(children, self.tag, self.uid)
 
-    def cluster(self):
+    @property
+    def clusters(self):
         string = ''
         for child in self:
             if isinstance(child, node):
@@ -71,6 +72,8 @@ class node(object):
                 yield child
             else:
                 string += child
+        if len(string) > 0:
+            yield string
 
 def copy(tree):
     """

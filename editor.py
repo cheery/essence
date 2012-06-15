@@ -14,7 +14,8 @@
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
 from essence.ui import color, window, get, eventloop, empty
 from essence.document import node, copy, splice, build, collapse, rename, serialize, deserialize, can_walk_up, can_walk_down, can_walk_left, can_walk_right
-from essence.layout import StringFrame, BlockFrame, ImageFrame, generate_frames
+#from essence.layout import StringFrame, BlockFrame, ImageFrame, generate_frames, Visualiser, row_layout
+from essence.layout import String, Image, Glue, Padding, Row, Column, View
 from essence.buffer import Buffer
 from essence.selection import Selection
 from essence.pluginmanager import default_plugin_directory, load_all_plugins
@@ -109,11 +110,11 @@ class Editor(object):
         self.new_console()
 
         self.plugins = []
-        for module in load_all_plugins([default_plugin_directory]):
-            if not hasattr(module, 'plugins'):
-                continue
-            for plugin in module.plugins:
-                self.plugins.append(plugin(self))
+#        for module in load_all_plugins([default_plugin_directory]):
+#            if not hasattr(module, 'plugins'):
+#                continue
+#            for plugin in module.plugins:
+#                self.plugins.append(plugin(self))
         self.plugins.sort(key=lambda obj: obj.priority)
 
     def key(self, context, sel, name, modifiers, ch):
@@ -122,12 +123,31 @@ class Editor(object):
                 return True
         return False
 
-    def visualise(self, context, obj, y):
+    def visualise(self, context, obj):# context, obj, view):
         for plugin in self.plugins:
-            frame = plugin.visualise(context, obj, y)
+            frame = plugin.visualise(context, obj)
             if frame is not None:
                 return frame
         # return some default instead
+        if not isinstance(obj, node):
+            return StringFrame(obj, self.font)
+        return BlockFrame(obj, background=self.border, layout=row_layout(spacing=8, padding=(10, 10, 10, 10)))
+
+    def layout_hook(self, obj, context, gen_children):
+        if isinstance(obj, node):
+            children = []
+            last = None
+            for frame in gen_children():
+                if last is not None:
+                    children.append(Glue(8, 30))
+                children.append(frame)
+                last = frame
+            Layout = Row if len(context) % 2 == 1 else Column
+            frame = Layout(children, iscluster=True)
+            return Padding(frame, left=8, right=8, top=2, bottom=2, background=self.border)
+
+        else:
+            return String(obj, self.font, iscluster=True)
 
     def new_console(self):
         self.console = Buffer(
@@ -140,7 +160,7 @@ class Editor(object):
     def frame(self, screen, dt):
         screen(black)
 
-        construct_frame = lambda document: generate_frames(document, self.font, self.border)
+        #construct_frame = lambda document: generate_frames(document, self.font, self.border)
 
         if self.sel == self.console.sel:
             width, height = screen.width, screen.height
@@ -156,13 +176,16 @@ class Editor(object):
         canvases = {}
         for buf, area in frames.items():
             canvas = empty(area[2], area[3])
-            root = buf(screen, construct_frame)
+            if buf.view is None:
+                buf.view = view = View(self.layout_hook, buf.document)
+            root = buf.view.root
             root.decorator = dark_gray # tiny hack, removed later.
-            root(canvas)
+            root.render(canvas)
             canvases[buf] = canvas
 
         sel = self.sel
-        highlight = sel.buf.root_frame.traverse(sel.finger).highlight(sel.start, sel.stop)
+        highlight = sel.buf.view.highlight(sel.finger, sel.start, sel.stop)
+        #root.traverse(sel.finger).highlight(sel.start, sel.stop)
         for area in highlight:
             canvases[sel.buf](about_blue, area) #.mul(almost_white, area).add(about_blue, area)
 

@@ -12,16 +12,28 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
+from essence.layout import StringFrame, BlockFrame
+
+precedence = {
+    'mul': 20,
+    'add': 10,
+}
+
+#def parent_precedence
+
 class TestPlugin(object):
     priority = 1
     def __init__(self, editor):
-        pass
+        self.add_spacer = editor.font('+')
+        self.mul_spacer = editor.font('*')
+        self.lparen = editor.font('(')
+        self.rparen = editor.font(')')
 
     def key(self, context, sel, name, modifiers, ch):
-        print (context, sel, name, modifiers, ch)
+        #print (context, sel, name, modifiers, ch)
         return False
 
-    def visualise(self, context, obj, y):
-        print (context, obj, y)
+    def visualise(self, context, obj):
+        pass
 
 plugins = [TestPlugin]

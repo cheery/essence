@@ -12,184 +12,275 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
+"""
+    To understand why layouter is like what it is, you'd need to understand
+    what were the design constraints. Here I describe the design constraints
+    that brought me to this design.
+
+    * must be controllable by a plugin hook
+    * must encode hierarchy in what it represents
+    * must allow highlight of the selection that falls within some range.
+    * must input dom and output frames
+    * plugins must be able of defining more frames
+    * there must be existing good frames like, string, image, group, glue
+    * must allow background on frame (perhaps padding as well?)
+
+    questions:
+    * table anchors?
+    * implement incremental now or later?
+"""
 from essence.document import node
-from casuarius import Solver, ConstraintVariable, weak
+from casuarius import Solver, ConstraintVariable, weak, medium, strong, required
 from os import urandom
 
 varying = lambda: ConstraintVariable(urandom(4).encode('hex'))
+valueof = lambda obj: obj.value if hasattr(obj, 'value') else obj
 
 class Frame(object):
-    @property
-    def right(self):
-        return self.left + self.width
-    @property
-    def bottom(self):
-        return self.top + self.height
+#    def __init__(self, left, top, width, height, halign, valign, iscluster=False, background=None):
+#        self.left = left
+#        self.top = top
+#        self.width = width
+#        self.height = height
+#        self.halign = halign
+#        self.valign = valign
+#        self.iscluster = iscluster
+#        self.background = background
 
-    def metric(self, attr):
-        var = getattr(self, attr)
-        if isinstance(var, ConstraintVariable):
-            return var.value
-        else:
-            return var
+    right = property(lambda self: self.left + self.width)
+    bottom = property(lambda self: self.top + self.height)
 
     @property
     def area(self):
-        return (
-            self.metric('left'),
-            self.metric('top'),
-            self.metric('width'),
-            self.metric('height')
-        )
+        return map(valueof, (self.left, self.top, self.width, self.height))
 
-class StringFrame(Frame):
-    def __init__(self, string, font):
-        self.string = string
+    def render(self, surface):
+        if self.background:
+            surface(self.background, self.area)
 
-        self.label = font(self.string)
-
-        self.width = self.label.width
-        self.height = self.label.height
-        self.left = varying()
-        self.top = varying()
-
-        self.valign = self.top + self.label.mathline
-        self.halign = self.left
-
-    def highlight_outer(self, start, stop):
-        left, top, width, height = self.area
-        offset0 = self.label.offsets[0 if start is None else start]
-        offset1 = self.label.offsets[-1 if stop is None else stop]
-        return (left + offset0, top - 1, offset1 - offset0 + 1, height + 2)
-
-    def __call__(self, screen):
-        screen(self.label, self.area)
-
-    def highlight_length(self):
-        return len(self.string)
-
-class BlockFrame(Frame):
-    def __init__(self, children, decorator=None):
-        self.children = children
-        self.decorator = decorator
-
-        self.width = varying()
-        self.height = varying()
-        self.left = varying()
-        self.top = varying()
-
-        self.valign = varying()
-        self.halign = varying()
-
-    def highlight_outer(self, start, stop):
+    def highlight(self, start, stop):
         left, top, width, height = self.area
         offset0 = [left, left+width][start]
         offset1 = [left, left+width][stop]
         return (offset0, top - 1, offset1 - offset0 + 1, height + 2)
 
-    def highlight_length(self):
-        return 1
+    cluster_length = 1
+
+    def configure_layout(self, view):
+        pass
+
+    def traverse(self, finger, index=0):
+        return None
+
+class String(Frame):
+    def __init__(self, string, font, iscluster=False, background=None):
+        self.string = string
+        self.label = font(self.string)
+
+        self.left = varying()
+        self.top = varying()
+        self.width = self.label.width
+        self.height = self.label.height
+        self.halign = self.left
+        self.valign = self.top + self.label.mathline
+        self.iscluster = iscluster
+        self.cluster_length = len(self.string)
+        self.background = background
+
+    def render(self, surface):
+        if self.background:
+            surface(self.background, self.area)
+        surface(self.label, self.area)
 
     def highlight(self, start, stop):
-        highlights = []
-        for child in self.children:
-            offset = child.highlight_length()
-            if stop >= 0 and start <= offset:
-                highlights.append(child.highlight_outer(max(start,0), min(stop,offset)))
-            start -= offset
-            stop -= offset
-        if len(highlights) == 0:
-            x, y, width, height = self.area
-            highlights.append((x + width / 2, y-1, 1, height+2))
-        return highlights
-        
+        left, top, width, height = self.area
+        offset0 = self.label.offsets[start]
+        offset1 = self.label.offsets[stop]
+        return (left + offset0, top - 1, offset1 - offset0 + 1, height + 2)
+
+class Image(Frame):
+    def __init__(self, background, width=None, height=None, iscluster=False):
+        self.background = background
+        self.left = varying()
+        self.top = varying()
+        self.width = background.width if width is None else width
+        self.height = background.height if height is None else height
+        self.halign = self.left
+        self.valign = self.top + self.height / 2 
+        self.iscluster = iscluster
+
+class Glue(Frame):
+    def __init__(self, size, stretch=None, background=None):
+        self.size = size
+        self.stretch = stretch
+
+        self.left = varying()
+        self.top = varying()
+        self.height = varying()
+        self.width = varying()
+        self.halign = self.left + self.width / 2
+        self.valign = self.top + self.height / 2
+        self.iscluster = False
+        self.background = background
+
+class Padding(Frame):
+    def __init__(self, child, left=0, top=0, right=0, bottom=0, background=None):
+        self.child = child
+        self.left = child.left - left
+        self.top = child.top - top
+        self.width = child.right + right - self.left
+        self.height = child.bottom + bottom - self.top
+        self.halign = child.halign
+        self.valign = child.valign
+        self.iscluster = child.iscluster
+        self.background = background
+    
+    def configure_layout(self, view):
+        self.child.configure_layout(view)
+
+    def render(self, surface):
+        if self.background:
+            surface(self.background, self.area)
+        self.child.render(surface)
+
+    def traverse(self, finger, index=0):
+        return self.child.traverse(finger, index)
+
+class Group(Frame):
+    min_width = 16
+    min_height = 16
+    def __init__(self, children, iscluster=False, background=None):
+        self.children = children
+
+        self.left = varying()
+        self.top = varying()
+        self.width = varying()
+        self.height = varying()
+        self.halign = self.left
+        self.valign = self.top + self.height / 2
+        self.iscluster = iscluster
+        self.background = background
+
+    def __iter__(self):
+        return iter(self.children)
+
+    def render(self, surface):
+        if self.background:
+            surface(self.background, self.area)
+        for child in self:
+            child.render(surface)
+
     def traverse(self, finger, index=0):
         if index >= len(finger):
             return self
         base = finger[index]
-        for child in self.children:
-            if base == 0:
-                return child.traverse(finger, index+1)
-            base -= child.highlight_length()
+        for child in self:
+            if child.iscluster:
+                if base == 0:
+                    return child.traverse(finger, index+1)
+                base -= child.cluster_length
         return None
-    
-    def __call__(self, screen):
-        if self.decorator:
-            screen.add(self.decorator, self.area)
-        for child in self.children:
-            child(screen)
 
-class ImageFrame(Frame):
-    def __init__(self, image, width=None, height=None):
-        self.image = image
+class Row(Group):
+    def configure_layout(self, view):
+        first = None
+        last = None
+        for child in self:
+            child.configure_layout(view)
+            view.require(self.left <= child.left)
+            view.require(child.right <= self.right)
+            view.require(self.top <= child.top)
+            view.require(child.bottom <= self.bottom)
+            view.prefer(self.valign == child.valign)
+            if isinstance(child, Glue):
+                view.guide(self.height == child.height)
+                view.guide(child.size == child.width)
+                view.require(child.size <= child.width)
+                view.require(child.width <= child.size + child.stretch)
+            if last is not None:
+                view.require(last.right <= child.left)
+            else:
+                first = child
+            last = child
+        view.require(self.width >= self.min_width)
+        view.require(self.height >= self.min_height)
+        view.guide(self.width == self.min_width)
+        view.guide(self.height == self.min_height)
+        if first and last:
+            view.guide(first.left - self.left == self.right - last.right)
 
-        self.width = image.width if width is None else width
-        self.height = image.height if height is None else height
-        self.left = varying()
-        self.top = varying()
+class Column(Group):
+    def configure_layout(self, view):
+        first = None
+        last = None
+        for child in self:
+            child.configure_layout(view)
+            view.require(self.left <= child.left)
+            view.require(child.right <= self.right)
+            view.require(self.top <= child.top)
+            view.require(child.bottom <= self.bottom)
+            view.prefer(self.halign == child.halign)
+            if isinstance(child, Glue):
+                view.guide(self.width == child.width)
+                view.guide(child.size == child.height)
+                view.require(child.size <= child.height)
+                view.require(child.height <= child.size + child.stretch)
+            if last is not None:
+                view.require(last.bottom <= child.top)
+            else:
+                first = child
+            last = child
+        view.require(self.width >= self.min_width)
+        view.require(self.height >= self.min_height)
+        view.guide(self.width == self.min_width)
+        view.guide(self.height == self.min_height)
+        if first and last:
+            view.guide(first.top - self.top == self.bottom - last.bottom)
 
-        self.valign = (self.top + self.bottom) / 2
-        self.halign = self.left
-
-    def __call__(self, screen):
-        screen(self.image, self.area)
-
-class Root(BlockFrame):
-    def __init__(self, children):
-        BlockFrame.__init__(self, children)
+class View(object):
+    def __init__(self, plugin_hook, document):
+        self.plugin_hook = plugin_hook
+        self.document = document
         self.solver = Solver()
+        self.root = self.build(document, ())
+        self.require(self.root.left == 32)
+        self.require(self.root.top == 32)
+        self.prefer(self.root.halign == 32)
+        self.prefer(self.root.valign == 32)
+        self.solver.autosolve = True
+        self.root.configure_layout(self)
 
-    def satisfy(self, rule, strength=None):
-        if strength is not None:
-            rule.strength = strength
+    def build(self, obj, context):
+        def gen_children():
+            frames = []
+            subcontext = context + (obj.tag,)
+            for child in obj.clusters:
+                frames.append(self.build(child, subcontext))
+            return frames
+        return self.plugin_hook(obj, context, gen_children)
+
+    def require(self, rule):
         self.solver.add_constraint(rule)
 
-def row_layout(this, children, satisfy):
-    last = None
-    for child in children:
-        satisfy(this.left <= child.left - 10)
-        satisfy(child.right <= this.right - 10)
-        satisfy(this.top <= child.top - 10)
-        satisfy(child.bottom <= this.bottom - 10)
-        satisfy(this.valign == child.valign)
-        if last is not None:
-            satisfy(last.right <= child.left - 8)
-            #satisfy(last.bottom <= child.top - 8)
-        last = child
-    satisfy(this.halign == this.left)
-    satisfy(this.width >= 20)
-    satisfy(this.height >= 20)
-    satisfy(this.valign >= this.top + 20)
-    satisfy(this.valign <= this.bottom - 20)
+    def prefer(self, rule):
+        rule.strength = strong
+        self.solver.add_constraint(rule)
 
-    satisfy(this.width == 0, weak)
-    satisfy(this.height == 0, weak)
-    #satisfy(this.valign == (this.top + this.bottom) / 2)
+    def guide(self, rule):
+        rule.strength = weak
+        self.solver.add_constraint(rule)
 
-def layout_blob(blob, font, unk_color, satisfy):
-    string = ''
-    for item in blob:
-        if isinstance(item, node):
-            if len(string) > 0:
-                yield StringFrame(string, font)
-                string = ''
-            children = []
-            this = BlockFrame(children, unk_color)
-            children.extend(layout_blob(item, font, unk_color, satisfy))
-            yield this
-            row_layout(this, children, satisfy)
-        else:
-            string += item
-    if len(string) > 0:
-        yield StringFrame(string, font)
+    def highlight(self, finger, start, stop):
+        frame = self.traverse(finger)
+        highlights = []
+        for child in frame:
+            offset = child.cluster_length
+            if child.iscluster:
+                if stop >= 0 and start <= offset:
+                    highlights.append(child.highlight(max(start,0), min(stop,offset)))
+                start -= offset
+                stop -= offset
+        return highlights
 
-
-def generate_frames(tree, font, unk_color):
-    frames = []
-    root = Root(frames)
-    frames.extend(layout_blob(tree, font, unk_color, root.satisfy))
-    row_layout(root, frames, root.satisfy)
-    root.satisfy(root.left == 10)
-    root.satisfy(root.top == 10)
-    root.solver.autosolve = True
-    return root
+    def traverse(self, finger):
+        return self.root.traverse(finger)

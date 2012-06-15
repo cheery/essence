@@ -15,10 +15,10 @@
 from document import deserialize, serialize
 
 class Buffer(object):
-    def __init__(self, document, history, root_frame=None, sel=None, filename=None):
+    def __init__(self, document, history, view=None, sel=None, filename=None):
         self.document = document
         self.history = history
-        self.root_frame = root_frame
+        self.view = view
         self.sel = sel
         self.filename = filename
         self.moid = self.prev_moid = 0
@@ -32,11 +32,6 @@ class Buffer(object):
     def modified(self):
         return self.moid != self.prev_moid
 
-    def __call__(self, screen, construct_frame):
-        if self.root_frame is None:
-            self.root_frame = construct_frame(self.document)
-        return self.root_frame
-
     def do(self, finger, operation):
         assert self.sel.finger == finger # don't do this later >:-(
         sel = self.sel
@@ -46,7 +41,7 @@ class Buffer(object):
         h0, h1 = self.history
         h0.append(reverse)
         self.history = h0, []
-        self.root_frame = None # less destructive update might be in place later.
+        self.view = None # less destructive update might be in place later.
         self.moid = self.next_moid
         self.next_moid += 1
 
@@ -58,7 +53,7 @@ class Buffer(object):
         reverse = self.moid, finger, operation(self.document.traverse(finger)), location
         h1.append(reverse)
         self.moid = moid
-        self.root_frame = None
+        self.view = None
 
     def redo(self):
         sel = self.sel
@@ -70,7 +65,7 @@ class Buffer(object):
         reverse = self.moid, finger, operation(self.document.traverse(finger)), location
         h0.append(reverse)
         self.moid = moid
-        self.root_frame = None
+        self.view = None
         return True
 
     def save(self, path=None): # this saving method cannot be trusted, although it tries to not crash.
