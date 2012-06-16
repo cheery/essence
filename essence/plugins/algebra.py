@@ -52,17 +52,6 @@ class TestPlugin(object):
         return True
         #print (context, sel, name, modifiers, ch)
 
-    def precedence_wrap(self, context, tag, blob):
-        top = None if len(context) == 0 else context[-1]
-        if precedence.get(top, 0) > precedence.get(tag, 0):
-            left = String('(', self.font)
-            right = String(')', self.font)
-            left.label.mul(gray)
-            right.label.mul(gray)
-            return [left] + blob + [right]
-        else:
-            return blob
-
     def algebraic_wrap(self, context, tag, ch, gen_children):
         children = []
         for last, frame in ilast(gen_children()):
@@ -75,7 +64,21 @@ class TestPlugin(object):
                     Glue(8, 0),
                 ])
             children.append(frame)
-        return self.precedence_wrap(context, tag, children)
+
+        if len(children) < 2:
+            marker = String(ch, self.font)
+            marker.label.mul(red)
+            children.append(marker)
+
+        top = None if len(context) == 0 else context[-1]
+        if precedence.get(top, 0) > precedence.get(tag, 0) or len(children) == 2:
+            left = String('(', self.font)
+            right = String(')', self.font)
+            left.label.mul(gray)
+            right.label.mul(gray)
+            return [left] + children + [right]
+        else:
+            return children
 
     def layout_hook(self, obj, context, gen_children):
         if isinstance(obj, node):
