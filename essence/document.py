@@ -81,6 +81,7 @@ def copy(tree):
     """
     if isinstance(tree, node):
         return tree.copy()
+    assert len(tree) == 1
     return tree
 
 ## change records, as concatenated, they represent changes on a document

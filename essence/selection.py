@@ -12,7 +12,8 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
-from document import can_walk_down, copy
+from essence.document import node, copy, splice, build, collapse, rename, serialize, deserialize, can_walk_up, can_walk_down, can_walk_left, can_walk_right
+from random import randint
 
 class Selection(object):
     def __init__(self, buf):
@@ -54,3 +55,19 @@ class Selection(object):
 
     def yank(self):
         return copy(self.document.traverse(self.finger)[self.start:self.stop])
+
+    def build(self, tag, uid=None):
+        uid = randint(1, 2**32) if uid is None else uid
+        sel = self
+        base = sel.start
+        sel.buf.do(sel.finger, build(sel.start, sel.stop, tag, randint(1, 10**10)))
+        sel.finger = sel.finger + (base,)
+        sel.cursor -= base
+        sel.tail -= base
+
+    def splice(self, blob):
+        self.buf.do(self.finger, splice(self.start, self.stop, blob))
+        self.tail = self.cursor = self.start + len(blob)
+
+    def __repr__(self):
+        return repr((self.start, self.stop))

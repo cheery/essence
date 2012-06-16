@@ -14,8 +14,7 @@
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
 from essence.ui import color, window, get, eventloop, empty
 from essence.document import node, copy, splice, build, collapse, rename, serialize, deserialize, can_walk_up, can_walk_down, can_walk_left, can_walk_right
-#from essence.layout import StringFrame, BlockFrame, ImageFrame, generate_frames, Visualiser, row_layout
-from essence.layout import String, Image, Glue, Padding, Row, Column, View
+from essence.layout import String, Image, Glue, Padding, Row, Column, View, DocumentView, ilast
 from essence.buffer import Buffer
 from essence.selection import Selection
 from essence.pluginmanager import default_plugin_directory, load_all_plugins
@@ -28,6 +27,7 @@ black = color(0x00, 0x00, 0x00)
 yellow = color(0x20, 0x20, 0x10)
 dark_gray = color(0x10, 0x10, 0x10)
 white = color(0xFF, 0xFF, 0xFF)
+transparent_white = color(0xFF, 0xFF, 0xFF, 0x80)
 
 almost_white = color(0xA0, 0xA0, 0xA0, 0xFF)
 about_blue = color(0x10, 0x10, 0xFF, 0x80)
@@ -49,13 +49,16 @@ keybindings = {
     pygame.K_r: 'r',
     pygame.K_y: 'y',
     pygame.K_n: 'n',
+    pygame.K_m: 'm',
     pygame.K_DELETE: 'delete',
     pygame.K_BACKSPACE: 'backspace',
     pygame.K_INSERT: 'insert',
 }
+modbindings = [
+    (pygame.KMOD_SHIFT, 'shift'),
+    (pygame.KMOD_CTRL, 'ctrl')
+]
 
-SHIFT = pygame.KMOD_SHIFT
-CTRL = pygame.KMOD_CTRL
 #KMOD_NONE, KMOD_LSHIFT, KMOD_RSHIFT, KMOD_SHIFT, KMOD_CAPS,
 #KMOD_LCTRL, KMOD_RCTRL, KMOD_CTRL, KMOD_LALT, KMOD_RALT,
 #KMOD_ALT, KMOD_LMETA, KMOD_RMETA, KMOD_META, KMOD_NUM, KMOD_MODE
@@ -90,7 +93,6 @@ class Editor(object):
     def __init__(self):
         self.window = window()
         self.window.on('paint', self.frame)
-        self.window.on('key', self.key_in)
         self.window.on('keydown', self.keydown)
         self.window.show()
         
@@ -110,42 +112,41 @@ class Editor(object):
         self.new_console()
 
         self.plugins = []
-#        for module in load_all_plugins([default_plugin_directory]):
-#            if not hasattr(module, 'plugins'):
-#                continue
-#            for plugin in module.plugins:
-#                self.plugins.append(plugin(self))
+        for module in load_all_plugins([default_plugin_directory]):
+            if not hasattr(module, 'plugins'):
+                continue
+            for plugin in module.plugins:
+                self.plugins.append(plugin(self))
         self.plugins.sort(key=lambda obj: obj.priority)
 
-    def key(self, context, sel, name, modifiers, ch):
+    def keyboard_hook(self, mode, key, modifiers, ch):
         for plugin in self.plugins:
-            if plugin.key(context, sel, name, modifiers, ch):
+            if plugin.keyboard_hook(mode, key, modifiers, ch):
                 return True
         return False
 
-    def visualise(self, context, obj):# context, obj, view):
+    def layout_hook(self, obj, context, gen_children):
         for plugin in self.plugins:
-            frame = plugin.visualise(context, obj)
+            frame = plugin.layout_hook(obj, context, gen_children)
             if frame is not None:
                 return frame
         # return some default instead
-        if not isinstance(obj, node):
-            return StringFrame(obj, self.font)
-        return BlockFrame(obj, background=self.border, layout=row_layout(spacing=8, padding=(10, 10, 10, 10)))
-
-    def layout_hook(self, obj, context, gen_children):
-        if isinstance(obj, node):
+        if isinstance(obj, node) and obj.tag == 'root':
             children = []
-            last = None
-            for frame in gen_children():
+            for last, frame in ilast(gen_children()):
                 if last is not None:
                     children.append(Glue(8, 30))
                 children.append(frame)
-                last = frame
-            Layout = Row if len(context) % 2 == 1 else Column
-            frame = Layout(children, iscluster=True)
-            return Padding(frame, left=8, right=8, top=2, bottom=2, background=self.border)
+            return Column(children, iscluster=True)
 
+        if isinstance(obj, node):
+            children = []
+            for last, frame in ilast(gen_children()):
+                if last is not None:
+                    children.append(Glue(8, 30))
+                children.append(frame)
+            frame = Row(children, iscluster=True)
+            return Padding(frame, left=8, right=8, top=2, bottom=2, background=self.border)
         else:
             return String(obj, self.font, iscluster=True)
 
@@ -159,8 +160,6 @@ class Editor(object):
 
     def frame(self, screen, dt):
         screen(black)
-
-        #construct_frame = lambda document: generate_frames(document, self.font, self.border)
 
         if self.sel == self.console.sel:
             width, height = screen.width, screen.height
@@ -177,17 +176,15 @@ class Editor(object):
         for buf, area in frames.items():
             canvas = empty(area[2], area[3])
             if buf.view is None:
-                buf.view = view = View(self.layout_hook, buf.document)
+                buf.view = view = DocumentView(self.layout_hook, buf.document)
             root = buf.view.root
-            root.decorator = dark_gray # tiny hack, removed later.
             root.render(canvas)
             canvases[buf] = canvas
 
         sel = self.sel
         highlight = sel.buf.view.highlight(sel.finger, sel.start, sel.stop)
-        #root.traverse(sel.finger).highlight(sel.start, sel.stop)
         for area in highlight:
-            canvases[sel.buf](about_blue, area) #.mul(almost_white, area).add(about_blue, area)
+            canvases[sel.buf](transparent_white, area) #.mul(almost_white, area).add(about_blue, area)
 
         for buf in frames:
             screen(canvases[buf], frames[buf])
@@ -205,75 +202,68 @@ class Editor(object):
         sel = self.sel
         sel.buf.do(sel.finger, rename(new_tag))
 
-    def key_in(self, ch):
-        sel = self.sel
-        if ch.isalnum() or ch in '_.':
-            sel.buf.do(sel.finger, splice(sel.start, sel.stop, [ch]))
-            sel.tail = sel.cursor = sel.start + len(ch)
-        pass #TODO: key_in(ch), pass to mode..
-
     def keydown(self, key, mod, ch):
-        sel = self.sel
-        name = keybindings.get(key)
-        context = [item.tag for item in sel.context]
-        modifiers = []
-        if mod & SHIFT:
-            modifiers.append('shift')
-        if mod & CTRL:
-            modifiers.append('ctrl')
-        if self.key(context, sel, name, modifiers, ch):
+        key = keybindings.get(key)
+        modifiers = set()
+        for mask, ident in modbindings:
+            if mod & mask != 0:
+                modifiers.add(ident)
+
+        if self.keyboard_hook(self.sel, key, modifiers, ch): # TODO: replace with mode.
             return
+
+        context = [obj.tag for obj in self.sel.context]
+        sel = self.sel
+        name = key
+
+        if len(ch) > 0 and (ch.isalnum() or ch in '_.'):
+            self.sel.splice([ch])
+        elif key == 'left':
+            self.sel.cursor -= self.sel.isinside(self.sel.cursor - 1)
+            if not 'shift' in modifiers:
+                self.sel.tail = self.sel.cursor
+        elif key == 'right':
+            self.sel.cursor += self.sel.isinside(self.sel.cursor + 1)
+            if not 'shift' in modifiers:
+                self.sel.tail = self.sel.cursor
 
         if name == 'enter' and ('console' in context):
             self.sel = self.buf.sel
             self.interpret(self.console.document)
-
         if name == 'up':
             while sel.isinside(sel.cursor - 1):
                 sel.cursor -= 1
                 if sel.can_descend(sel.cursor) or sel.can_descend(sel.cursor-1):
                     break
-            if not mod & SHIFT:
-                sel.tail = sel.cursor
+            if not 'shift' in modifiers:
+                self.sel.tail = self.sel.cursor
         if name == 'down':
             while sel.isinside(sel.cursor + 1):
                 sel.cursor += 1
                 if sel.can_descend(sel.cursor) or sel.can_descend(sel.cursor-1):
                     break
-            if not mod & SHIFT:
-                sel.tail = sel.cursor
-        if name == 'left':
-            sel.cursor -= sel.isinside(sel.cursor - 1)
-            if not mod & SHIFT:
-                sel.tail = sel.cursor
-        if name == 'right':
-            sel.cursor += sel.isinside(sel.cursor + 1)
-            if not mod & SHIFT:
+            if not 'shift' in modifiers:
                 sel.tail = sel.cursor
         if name == 'enter' and sel.can_descend(sel.cursor):
             sel.finger = sel.finger + (sel.cursor,)
-            sel.cursor = sel.tail = len(sel.top) if mod & SHIFT else 0
+            sel.cursor = sel.tail = len(sel.top) if 'shift' in modifiers else 0
         elif name == 'enter' and sel.can_descend(sel.cursor - 1):
             sel.finger = sel.finger + (sel.cursor - 1,)
-            sel.cursor = sel.tail = len(sel.top) if mod & SHIFT else 0
+            sel.cursor = sel.tail = len(sel.top) if 'shift' in modifiers else 0
         if name == 'space' and sel.can_ascend():
-            sel.cursor = sel.tail = sel.finger[-1] + (1 - bool(mod & SHIFT))
+            sel.cursor = sel.tail = sel.finger[-1] + (1 - bool('shift' in modifiers))
             sel.finger = sel.finger[:-1]
         if name == 'tab':
-            base = sel.start
-            sel.buf.do(sel.finger, build(sel.start, sel.stop, 'unk', randint(1, 10**10)))
-            sel.finger = sel.finger + (base,)
-            sel.cursor -= base
-            sel.tail -= base
-        if name == 's' and mod & CTRL:
+            sel.build('unk')
+        if name == 's' and 'ctrl' in modifiers:
             sel.buf.save()
-        if name == 'q' and mod & CTRL and not sel.buf.modified:
+        if name == 'q' and 'ctrl' in modifiers and not sel.buf.modified:
             exit(0)
-        if name == 'q' and mod & CTRL and mod & SHIFT:
+        if name == 'q' and 'ctrl' in modifiers and 'shift' in modifiers:
             exit(0)
-        if name == 'u' and mod & CTRL:
+        if name == 'u' and 'ctrl' in modifiers:
             sel.buf.undo()
-        if name == 'r' and mod & CTRL:
+        if name == 'r' and 'ctrl' in modifiers:
             sel.buf.redo()
         if name in ('delete', 'backspace'):
             offset = ('backspace', 'delete').index(name)*2 - 1
@@ -281,26 +271,26 @@ class Editor(object):
                 sel.cursor += offset
             sel.buf.do(sel.finger, splice(sel.start, sel.stop, []))
             sel.tail = sel.cursor = sel.start
-        if name == 'a' and mod & CTRL:
+        if name == 'a' and 'ctrl' in modifiers:
             sel.start = 0
             sel.stop = len(sel.top)
-        if name == 'y' and mod & CTRL:
+        if name == 'y' and 'ctrl' in modifiers:
             blob = sel.yank()
             if len(blob) > 0:
                 scrap.put(pygame.SCRAP_TEXT, serialize(blob))
-        if name == 'insert' and mod & CTRL:
+        if name == 'insert' and 'ctrl' in modifiers:
             data = scrap.get(pygame.SCRAP_TEXT)
             if data:
                 blob = deserialize(data)
                 sel.buf.do(sel.finger, splice(sel.start, sel.stop, blob))
                 sel.cursor = sel.tail = sel.start + len(blob)
-        if name == 'delete' and mod & CTRL:
+        if name == 'delete' and 'ctrl' in modifiers:
             blob = sel.yank()
             if len(blob) > 0:
                 scrap.put(pygame.SCRAP_TEXT, serialize(blob))
             sel.buf.do(sel.finger, splice(sel.start, sel.stop, []))
             sel.stop = sel.start
-        if name == 'n' and mod & CTRL and len(context) > 0:
+        if name == 'n' and 'ctrl' in modifiers and len(context) > 0:
             console = self.new_console()
             self.sel = console.sel
             rename_symbol = node(['r','e','n','a','m','e'], 'action', randint(1, 10**10))
@@ -309,6 +299,7 @@ class Editor(object):
             console.do(console.sel.finger, splice(0, 0, [rename_symbol, selection_symbol, slot]))
             console.sel.finger = (2,)
             console.sel.current = console.sel.tail = 0
+
         pass #TODO: keydown(key, mod, unicode), map to keybind, pass to mode..
 
 if __name__ == "__main__":

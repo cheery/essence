@@ -12,7 +12,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
-from backend import get, color, empty, window, eventloop
+from backend import get, color, empty, window, eventloop, composite
 from util import vec2
 
 class view(object):

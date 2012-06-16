@@ -238,26 +238,10 @@ class Column(Group):
             view.guide(first.top - self.top == self.bottom - last.bottom)
 
 class View(object):
-    def __init__(self, plugin_hook, document):
-        self.plugin_hook = plugin_hook
-        self.document = document
+    def __init__(self, root):
         self.solver = Solver()
-        self.root = self.build(document, ())
-        self.require(self.root.left == 32)
-        self.require(self.root.top == 32)
-        self.prefer(self.root.halign == 32)
-        self.prefer(self.root.valign == 32)
-        self.solver.autosolve = True
+        self.root = root
         self.root.configure_layout(self)
-
-    def build(self, obj, context):
-        def gen_children():
-            frames = []
-            subcontext = context + (obj.tag,)
-            for child in obj.clusters:
-                frames.append(self.build(child, subcontext))
-            return frames
-        return self.plugin_hook(obj, context, gen_children)
 
     def require(self, rule):
         self.solver.add_constraint(rule)
@@ -280,7 +264,35 @@ class View(object):
                     highlights.append(child.highlight(max(start,0), min(stop,offset)))
                 start -= offset
                 stop -= offset
+        if len(highlights) == 0:
+            highlights.append(frame.area)
         return highlights
 
     def traverse(self, finger):
         return self.root.traverse(finger)
+
+class DocumentView(View):
+    def __init__(self, plugin_hook, document):
+        self.plugin_hook = plugin_hook
+        self.document = document
+        View.__init__(self, root = self.build(document, ()))
+        self.require(self.root.left == 32)
+        self.require(self.root.top == 32)
+        self.prefer(self.root.halign == 32)
+        self.prefer(self.root.valign == 32)
+        self.solver.autosolve = True
+
+    def build(self, obj, context):
+        def gen_children():
+            frames = []
+            subcontext = context + (obj.tag,)
+            for child in obj.clusters:
+                frames.append(self.build(child, subcontext))
+            return frames
+        return self.plugin_hook(obj, context, gen_children)
+
+def ilast(seq):
+    last = None
+    for this in seq:
+        yield last, this
+        last = this

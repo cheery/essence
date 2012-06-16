@@ -29,8 +29,22 @@ def load_all_plugins(directories):
     for directory in directories:
         for name in list_plugins(directory):
             fd, pathname, desc = find_module(name, [directory])
-            plugin = load_module(name, fd, pathname, desc)
-            plugins.append(plugin)
+            try:
+                plugin = load_module(name, fd, pathname, desc)
+                plugins.append(plugin)
+            except APIVersionMismatch, e:
+                print "%s: %r" % (pathname, e)
     return plugins
 
 default_plugin_directory = join(dirname(__file__), 'plugins')
+
+major = _major = 0
+minor = _minor = 0
+patch = 0
+
+class APIVersionMismatch(Exception):
+    pass
+
+def require_api_version(major, minor):
+    if _major != major or _minor < minor:
+        raise APIVersionMismatch()
