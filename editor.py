@@ -160,6 +160,7 @@ class Editor(object):
 
     def frame(self, screen, dt):
         screen(black)
+        screen(almost_white)
 
         if self.sel == self.console.sel:
             width, height = screen.width, screen.height
