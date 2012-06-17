@@ -40,9 +40,11 @@ class TestPlugin(object):
 #        self.rparen = editor.font(')')
 
     def keyboard_hook(self, mode, key, modifiers, ch): #context, sel, name, modifiers, ch):
-        if 'shift' in modifiers and key == 'a':
+#        if 'shift' in modifiers and key == 'a':
+        if ch == '+':
             mode.build('add')
-        elif 'shift' in modifiers and key == 'm':
+        if ch == '*':
+#        elif 'shift' in modifiers and key == 'm':
             mode.build('mul')
         elif ch.isdigit() and mode.context[-1].tag != 'int':
             mode.build('int')
