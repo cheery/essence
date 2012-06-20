@@ -38,7 +38,7 @@ def load_all_plugins(directories):
 
 default_plugin_directory = join(dirname(__file__), 'plugins')
 
-major = _major = 0
+major = _major = 1
 minor = _minor = 0
 patch = 0
 

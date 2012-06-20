@@ -14,7 +14,8 @@
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
 from essence.ui import color, window, get, eventloop, empty
 from essence.document import node, copy, splice, build, collapse, rename, serialize, deserialize, can_walk_up, can_walk_down, can_walk_left, can_walk_right
-from essence.layout import String, Image, Glue, Padding, Row, Column, View, DocumentView, ilast
+from essence.layout import string, image, xglue, yglue, group, expando, engine
+#from essence.layout import String, Image, Glue, Padding, Row, Column, View, DocumentView, ilast
 from essence.buffer import Buffer
 from essence.selection import Selection
 from essence.pluginmanager import default_plugin_directory, load_all_plugins
@@ -22,6 +23,16 @@ from random import randint
 from sys import argv, exit
 from pygame import scrap
 import os
+
+black = color(0x00, 0x00, 0x00)
+red = color(0xFF, 0x00, 0x00)
+yellow = color(0xFF, 0xFF, 0x00)
+green = color(0x00, 0xFF, 0x00)
+cyan = color(0x00, 0xFF, 0xFF)
+blue = color(0x00, 0x00, 0xFF)
+white = color(0xFF, 0xFF, 0xFF)
+gray = color(0x80, 0x80, 0x80)
+dark_gray = color(0x10, 0x10, 0x10)
 
 black = color(0x00, 0x00, 0x00)
 yellow = color(0x20, 0x20, 0x10)
@@ -88,6 +99,35 @@ class ContextVisual(object):
             area = x + p, y + 26 - uidl.baseline, uidl.width, uidl.height
             screen(uidl, area)
             x += width + 10
+
+sequence = node
+
+def isstring(cluster):
+    return not isinstance(cluster, sequence)
+#    return not isinstance(cluster, sequence)
+
+def isscratch(cluster):
+    return cluster.kw.get('which') == 'scratch'
+
+def tagged(cluster, tag):
+    return cluster.kw.get('tag') == tag
+
+def makelist(fn):
+    return lambda *a, **kw: list(fn(*a, **kw))
+
+@makelist
+def delimit(seq, fn, *a, **kw):
+    it = iter(seq)
+    yield it.next()
+    for obj in it:
+        yield fn(*a, **kw)
+        yield obj
+
+def with_ranges(clusters, offset=0):
+    for cluster in clusters:
+        length = 1 if isinstance(cluster, sequence) else len(cluster)
+        yield (offset, offset+length), cluster
+        offset += length
 
 class Editor(object):
     def __init__(self):
@@ -158,40 +198,72 @@ class Editor(object):
         self.console.sel = Selection(self.console)
         return self.console
 
+    def new_layout_hook(self, obj):
+        if isstring(obj):
+            return string(self.font(obj))
+        frames = self.layout_all(obj.clusters)
+#        if isscratch(obj):
+#            return group(delimit(frames, yglue, 8, 2), background=black, padding=(5,5,5,5))
+        #if tagged(obj, ....
+#        tag = string(self.font('{%s}' % obj.kw.get('tag')).mul(red))
+        tag = string(self.font('{%s}' % obj.tag).mul(red))
+        return group(delimit([tag] + list(frames), xglue, 8, 12), background=self.border, padding=(10,10,10,10))
+
+    def layout_all(self, clusters):
+        for range, obj in with_ranges(clusters):
+            frame = self.new_layout_hook(obj)
+            frame.range = range
+            yield frame
+
     def frame(self, screen, dt):
         screen(black)
-        screen(almost_white)
 
-        if self.sel == self.console.sel:
-            width, height = screen.width, screen.height
-            frames = {
-#                self.buf: (0, 0, width, height - 64),
-#                self.console: (0, height - 64, width, 64),
-                self.console: (0, 0, width, height),
-            }
-        else:
-            frames = {
-                self.buf: (0, 0, screen.width, screen.height),
-            }
-        canvases = {}
-        for buf, area in frames.items():
-            canvas = empty(area[2], area[3])
-            if buf.view is None:
-                buf.view = view = DocumentView(self.layout_hook, buf.document)
-            root = buf.view.root
-            root.render(canvas)
-            canvases[buf] = canvas
+        buf = self.buf
 
-        sel = self.sel
-        highlight = sel.buf.view.highlight(sel.finger, sel.start, sel.stop)
-        for area in highlight:
-            canvases[sel.buf](transparent_white, area) #.mul(almost_white, area).add(about_blue, area)
+        if buf.view is None:
+            buf.view = self.new_layout_hook(buf.document)
+        root = buf.view
 
-        for buf in frames:
-            screen(canvases[buf], frames[buf])
-        
-        ContextVisual(self.sel, self.font)(screen)
+        ngin = engine()
+        ngin.guide(root.left == 50)
+        ngin.guide(root.top == 50)
+        root.configure(ngin)
 
+        root.render(screen)
+
+
+#        screen(almost_white)
+#
+#        if self.sel == self.console.sel:
+#            width, height = screen.width, screen.height
+#            frames = {
+##                self.buf: (0, 0, width, height - 64),
+##                self.console: (0, height - 64, width, 64),
+#                self.console: (0, 0, width, height),
+#            }
+#        else:
+#            frames = {
+#                self.buf: (0, 0, screen.width, screen.height),
+#            }
+#        canvases = {}
+#        for buf, area in frames.items():
+#            canvas = empty(area[2], area[3])
+#            if buf.view is None:
+#                buf.view = view = DocumentView(self.layout_hook, buf.document)
+#            root = buf.view.root
+#            root.render(canvas)
+#            canvases[buf] = canvas
+#
+#        sel = self.sel
+#        highlight = sel.buf.view.highlight(sel.finger, sel.start, sel.stop)
+#        for area in highlight:
+#            canvases[sel.buf](transparent_white, area) #.mul(almost_white, area).add(about_blue, area)
+#
+#        for buf in frames:
+#            screen(canvases[buf], frames[buf])
+#        
+#        ContextVisual(self.sel, self.font)(screen)
+#
         caption, iconname = pygame.display.get_caption()
         if self.buf.caption != caption:
             pygame.display.set_caption(self.buf.caption, 'upi')

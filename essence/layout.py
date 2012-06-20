@@ -12,41 +12,36 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
-"""
-    To understand why layouter is like what it is, you'd need to understand
-    what were the design constraints. Here I describe the design constraints
-    that brought me to this design.
 
-    * must be controllable by a plugin hook
-    * must encode hierarchy in what it represents
-    * must allow highlight of the selection that falls within some range.
-    * must input dom and output frames
-    * plugins must be able of defining more frames
-    * there must be existing good frames like, string, image, group, glue
-    * must allow background on frame (perhaps padding as well?)
+#TODO: table layout
+#TODO: breaker, breakable, (penalty, pre, post) into glue
 
-    questions:
-    * table anchors?
-    * implement incremental now or later?
-"""
-from essence.document import node
 from casuarius import Solver, ConstraintVariable, weak, medium, strong, required
-from os import urandom
-
-varying = lambda: ConstraintVariable(urandom(4).encode('hex'))
 valueof = lambda obj: obj.value if hasattr(obj, 'value') else obj
 
-class Frame(object):
-#    def __init__(self, left, top, width, height, halign, valign, iscluster=False, background=None):
-#        self.left = left
-#        self.top = top
-#        self.width = width
-#        self.height = height
-#        self.halign = halign
-#        self.valign = valign
-#        self.iscluster = iscluster
-#        self.background = background
+class declaration(object):
+    range = None
+    def render(self, surface):
+        pass
+    
+    def glue(self, engine, parent, prev, next):
+        pass
 
+    def configure(self, engine):
+        pass
+
+    def highlight(self, start, stop):
+        pass
+
+    def find(self):
+        return iter([])
+
+    def variables(self, *a):
+        template = repr(self) + ".%s"
+        for name in a:
+            setattr(self, name, ConstraintVariable(template % name))
+
+class frame(declaration):
     right = property(lambda self: self.left + self.width)
     bottom = property(lambda self: self.top + self.height)
 
@@ -54,194 +49,165 @@ class Frame(object):
     def area(self):
         return map(valueof, (self.left, self.top, self.width, self.height))
 
+    def glue(self, engine, parent, prev, next):
+        engine.require(parent.left + parent.padding[0] <= self.left)
+        engine.require(parent.top + parent.padding[1] <= self.top)
+        engine.require(self.right + parent.padding[2] <= parent.right)
+        engine.require(self.bottom + parent.padding[3] <= parent.bottom)
+
+    def highlight(self, start1, stop1):
+        start0, stop0 = self.range
+        if stop0 >= start1 and stop1 >= start0:
+            start, stop = max(start0, start1) - start0, min(stop0, stop1) - start0
+            left, top, width, height = self.area
+            offset0 = [left, left+width][start]
+            offset1 = [left, left+width][stop]
+            return (offset0, top - 1, offset1 - offset0 + 1, height + 2)
+
+class string(frame):
+    def __init__(self, label, xalign=None, yalign=None):
+        self.label = label
+        self.variables('left', 'top')
+        self.width = label.width
+        self.height = label.height
+        self.xalign = self.left if xalign is None else xalign(self)
+        self.yalign = self.top + label.mathline if yalign is None else yalign(self)
+    
     def render(self, surface):
-        if self.background:
-            surface(self.background, self.area)
-
-    def highlight(self, start, stop):
-        left, top, width, height = self.area
-        offset0 = [left, left+width][start]
-        offset1 = [left, left+width][stop]
-        return (offset0, top - 1, offset1 - offset0 + 1, height + 2)
-
-    cluster_length = 1
-
-    def configure_layout(self, view):
-        pass
-
-    def traverse(self, finger, index=0):
-        return None
-
-class String(Frame):
-    def __init__(self, string, font, iscluster=False, background=None):
-        self.string = string
-        self.label = font(self.string)
-
-        self.left = varying()
-        self.top = varying()
-        self.width = self.label.width
-        self.height = self.label.height
-        self.halign = self.left
-        self.valign = self.top + self.label.mathline
-        self.iscluster = iscluster
-        self.cluster_length = len(self.string)
-        self.background = background
-
-    def render(self, surface):
-        if self.background:
-            surface(self.background, self.area)
         surface(self.label, self.area)
 
-    def highlight(self, start, stop):
-        left, top, width, height = self.area
-        offset0 = self.label.offsets[start]
-        offset1 = self.label.offsets[stop]
-        return (left + offset0, top - 1, offset1 - offset0 + 1, height + 2)
+    def highlight(self, start1, stop1):
+        start0, stop0 = self.range
+        if stop0 >= start1 and stop1 >= start0:
+            start, stop = max(start0, start1) - start0, min(stop0, stop1) - start0
+            left, top, width, height = self.area
+            offset0 = self.label.offsets[start] + left
+            offset1 = self.label.offsets[stop] + left
+            return (offset0, top - 1, offset1 - offset0 + 1, height + 2)
 
-class Image(Frame):
-    def __init__(self, background, width=None, height=None, iscluster=False):
-        self.background = background
-        self.left = varying()
-        self.top = varying()
-        self.width = background.width if width is None else width
-        self.height = background.height if height is None else height
-        self.halign = self.left
-        self.valign = self.top + self.height / 2 
-        self.iscluster = iscluster
+class image(frame):
+    def __init__(self, image, width=None, height=None, xalign=None, yalign=None):
+        self.image = image
+        self.variables('left', 'top')
+        self.width = image.width if width is None else width
+        self.height = image.height if height is None else height
+        self.xalign = self.left if xalign is None else xalign(self)
+        self.yalign = self.top + self.height/2 if yalign is None else yalign(self)
 
-class Glue(Frame):
-    def __init__(self, size, stretch=None, background=None):
-        self.size = size
+    def render(self, surface):
+        surface(self.image, self.area)
+
+class xglue(declaration):
+    def __init__(self, gap, stretch):
+        self.gap = gap
         self.stretch = stretch
 
-        self.left = varying()
-        self.top = varying()
-        self.height = varying()
-        self.width = varying()
-        self.halign = self.left + self.width / 2
-        self.valign = self.top + self.height / 2
-        self.iscluster = False
+    def glue(self, engine, parent, prev, next):
+        if prev is not None and next is not None:
+            engine.prefer(prev.right + self.gap == next.left)
+            if self.stretch is not None:
+                engine.require(prev.right + self.gap + self.stretch >= next.left)
+            engine.require(prev.right + self.gap <= next.left)
+            engine.prefer(prev.yalign == next.yalign)
+
+class yglue(declaration):
+    def __init__(self, gap, stretch):
+        self.gap = gap
+        self.stretch = stretch
+
+    def glue(self, engine, parent, prev, next):
+        if prev is not None and next is not None:
+            engine.prefer(prev.bottom + self.gap == next.top)
+            if self.stretch is not None:
+                engine.require(prev.bottom + self.gap + self.stretch >= next.top)
+            engine.require(prev.bottom + self.gap <= next.top)
+            engine.prefer(prev.xalign == next.xalign)
+
+def neighboured(obj):
+    it = iter(obj)
+    item0 = None
+    item1 = it.next()
+    for item2 in it:
+        yield item0, item1, item2
+        item0 = item1
+        item1 = item2
+    yield item0, item1, None
+
+class group(frame):
+    def __init__(self, elements, background=None, padding=(0,0,0,0), xalign=None, yalign=None):
+        self.elements = elements
         self.background = background
-
-class Padding(Frame):
-    def __init__(self, child, left=0, top=0, right=0, bottom=0, background=None):
-        self.child = child
-        self.left = child.left - left
-        self.top = child.top - top
-        self.width = child.right + right - self.left
-        self.height = child.bottom + bottom - self.top
-        self.halign = child.halign
-        self.valign = child.valign
-        self.iscluster = child.iscluster
-        self.background = background
-    
-    def configure_layout(self, view):
-        self.child.configure_layout(view)
-
-    def render(self, surface):
-        if self.background:
-            surface(self.background, self.area)
-        self.child.render(surface)
-
-    def traverse(self, finger, index=0):
-        return self.child.traverse(finger, index)
-
-class Group(Frame):
-    min_width = 16
-    min_height = 16
-    def __init__(self, children, iscluster=False, background=None):
-        self.children = children
-
-        self.left = varying()
-        self.top = varying()
-        self.width = varying()
-        self.height = varying()
-        self.halign = self.left
-        self.valign = self.top + self.height / 2
-        self.iscluster = iscluster
-        self.background = background
+        self.padding = padding
+        self.variables('left', 'top', 'width', 'height')
+        self.xalign = self.left if xalign is None else xalign(self)
+        self.yalign = self.top + self.height / 2 if yalign is None else yalign(self)
 
     def __iter__(self):
-        return iter(self.children)
+        return iter(self.elements)
+
+    def __getitem__(self, index):
+        return self.elements[index]
+
+    def configure(self, engine):
+        for item0, item1, item2 in neighboured(self):
+            item1.configure(engine)
+            item1.glue(engine, self, item0, item2)
+
+    def glue(self, engine, parent, prev, next):
+        frame.glue(self, engine, parent, prev, next)
+        engine.guide(self.width == 1)
+        engine.guide(self.height == 1)
 
     def render(self, surface):
         if self.background:
             surface(self.background, self.area)
-        for child in self:
-            child.render(surface)
+        for decl in self:
+            decl.render(surface)
 
-    def traverse(self, finger, index=0):
-        if index >= len(finger):
-            return self
-        base = finger[index]
-        for child in self:
-            if child.iscluster:
-                if base == 0:
-                    return child.traverse(finger, index+1)
-                base -= child.cluster_length
-        return None
-
-class Row(Group):
-    def configure_layout(self, view):
-        first = None
-        last = None
-        for child in self:
-            child.configure_layout(view)
-            view.require(self.left <= child.left)
-            view.require(child.right <= self.right)
-            view.require(self.top <= child.top)
-            view.require(child.bottom <= self.bottom)
-            view.prefer(self.valign == child.valign)
-            if isinstance(child, Glue):
-                view.guide(self.height == child.height)
-                view.guide(child.size == child.width)
-                view.require(child.size <= child.width)
-                view.require(child.width <= child.size + child.stretch)
-            if last is not None:
-                view.require(last.right <= child.left)
+    def find(self):
+        for decl in self:
+            if decl.range is None:
+                for subdecl in decl.find():
+                    yield subdecl
             else:
-                first = child
-            last = child
-        view.require(self.width >= self.min_width)
-        view.require(self.height >= self.min_height)
-        view.guide(self.width == self.min_width)
-        view.guide(self.height == self.min_height)
-        if first and last:
-            view.guide(first.left - self.left == self.right - last.right)
+                yield decl
 
-class Column(Group):
-    def configure_layout(self, view):
-        first = None
-        last = None
-        for child in self:
-            child.configure_layout(view)
-            view.require(self.left <= child.left)
-            view.require(child.right <= self.right)
-            view.require(self.top <= child.top)
-            view.require(child.bottom <= self.bottom)
-            view.prefer(self.halign == child.halign)
-            if isinstance(child, Glue):
-                view.guide(self.width == child.width)
-                view.guide(child.size == child.height)
-                view.require(child.size <= child.height)
-                view.require(child.height <= child.size + child.stretch)
-            if last is not None:
-                view.require(last.bottom <= child.top)
-            else:
-                first = child
-            last = child
-        view.require(self.width >= self.min_width)
-        view.require(self.height >= self.min_height)
-        view.guide(self.width == self.min_width)
-        view.guide(self.height == self.min_height)
-        if first and last:
-            view.guide(first.top - self.top == self.bottom - last.bottom)
+class expando(frame):
+    def __init__(self, element, width, height, expanded=True, background=None, xalign=None, yalign=None):
+        self.element = element
+        self.expanded = expanded
+        self.background = background
+        self.variables('left', 'top')
+        self.width = width
+        self.height = height
+        self.xalign = self.left if xalign is None else xalign(self)
+        self.yalign = self.top + self.height/2 if yalign is None else yalign(self)
+    
+    def configure(self, engine):
+        self.element.configure(engine)
 
-class View(object):
-    def __init__(self, root):
+    def glue(self, engine, parent, prev, next):
+        frame.glue(self, engine, parent, prev, next)
+        engine.guide(self.xalign == self.element.xalign)
+        engine.guide(self.yalign == self.element.yalign)
+
+    def render(self, surface):
+        if self.background:
+            surface(self.background, self.area)
+        if self.expanded:
+            self.element.render(surface)
+
+    def find(self):
+        if self.element.range is None:
+            for decl in self.element.find():
+                yield decl
+        else:
+            yield self.element
+
+class engine(object):
+    def __init__(self):
         self.solver = Solver()
-        self.root = root
-        self.root.configure_layout(self)
+        self.solver.autosolve = True
 
     def require(self, rule):
         self.solver.add_constraint(rule)
@@ -254,45 +220,6 @@ class View(object):
         rule.strength = weak
         self.solver.add_constraint(rule)
 
-    def highlight(self, finger, start, stop):
-        frame = self.traverse(finger)
-        highlights = []
-        for child in frame:
-            offset = child.cluster_length
-            if child.iscluster:
-                if stop >= 0 and start <= offset:
-                    highlights.append(child.highlight(max(start,0), min(stop,offset)))
-                start -= offset
-                stop -= offset
-        if len(highlights) == 0:
-            highlights.append(frame.area)
-        return highlights
-
-    def traverse(self, finger):
-        return self.root.traverse(finger)
-
-class DocumentView(View):
-    def __init__(self, plugin_hook, document):
-        self.plugin_hook = plugin_hook
-        self.document = document
-        View.__init__(self, root = self.build(document, ()))
-        self.require(self.root.left == 32)
-        self.require(self.root.top == 32)
-        self.prefer(self.root.halign == 32)
-        self.prefer(self.root.valign == 32)
-        self.solver.autosolve = True
-
-    def build(self, obj, context):
-        def gen_children():
-            frames = []
-            subcontext = context + (obj.tag,)
-            for child in obj.clusters:
-                frames.append(self.build(child, subcontext))
-            return frames
-        return self.plugin_hook(obj, context, gen_children)
-
-def ilast(seq):
-    last = None
-    for this in seq:
-        yield last, this
-        last = this
+__all__ = [
+    declaration, frame, string, image, xglue, yglue, neighboured, group, expando, engine
+]
