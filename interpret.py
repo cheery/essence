@@ -1,7 +1,5 @@
-from essence.document import node, copy, deserialize
+from essence import load
 import sys
-
-as_string = lambda obj: ''.join(obj.clusters)
 
 class closure(object):
     def __init__(self, arguments, body, env):
@@ -13,55 +11,47 @@ class closure(object):
         env = dict(zip(self.arguments, arguments))
         env['__parent__'] = self.env
         res = None
-        for obj in self.body:
-            res = interpret(obj, env)
+        for expr in self.body.array:
+            res = interpret(expr, env)
         return res
 
-def interpret(obj, env):
-    if not isinstance(obj, node):
-        raise Exception("invalid structure")
-    if obj.tag == 'int':
-        return int(as_string(obj))
-    if obj.tag == 'mul':
-        acc = 1
-        for term in obj.clusters:
-            acc *= interpret(term, env)
-        return acc
-    if obj.tag == 'add':
-        acc = 0
-        for term in obj.clusters:
-            acc += interpret(term, env)
-        return acc
-    if obj.tag == 'set':
-        block = list(obj.clusters)
-        value = interpret(block[-1], env)
-        for key in block[:-1]:
-            env[as_string(key)] = value
-        return None
-    if obj.tag == 'variable':
-        key = as_string(obj)
-        if not key in env:
-            raise Exception("%r not in %r" % (key, env))
-        return env[key]
-    if obj.tag == 'define':
-        body = list(obj.clusters)
+def interpret(expr, env):
+    name = expr.get('name')
+    if name == 'int':
+        return int(expr.string) # on early versions it's a string.
+    if name == 'mul':
+        left, right = expr.array
+        return left * right
+    if name == 'add':
+        left, right = expr.array
+        return left + right
+    if name == 'set':
+        left, right = expr.array
+        env[left] = interpret(right, env)
+    if name == 'variable':
+        variable = expr.string
+        if not variable in env:
+            raise Exception("%r not in %r" % (variable, env))
+        return env[variable]
+    if name == 'define':
+        name, arglist, body = expr.array
         arguments = []
-        if body[0].tag == 'arguments':
-            for argument in list(body.pop(0).clusters):
-                assert argument.tag == 'variable'
-                arguments.append(as_string(argument))
-        env[arguments.pop(0)] = closure(arguments, body, env)
-        return None
-    if obj.tag == 'call':
-        block = list(obj.clusters)
-        arguments = [interpret(obj, env) for obj in block]
-        fn = arguments.pop(0)
-        return fn.apply(arguments)
-    raise Exception("unknown clause %r" % obj.tag)
+        for argument in arglist.array:
+            assert argument.get('name') == 'variable'
+            arguments.append(argument.string)
+        env[name] = closure(arguments, body, env)
+    if name == 'call':
+        caller, arguments = expr.array
+        caller = interpret(caller, env)
+        arguments = [interpret(arg, env) for arg in arguments]
+        return caller.apply(arguments)
+    raise Exception("unknown clause %r", expr)
 
-program = deserialize(open(sys.argv[1]).read())
-assert program.tag == 'root'
+program = load(sys.argv[1])
+assert program.get('tag') == 's-expr'
 
 env = {}
-print "program result:", [interpret(obj, env) for obj in program.clusters][-1]
-
+res = None
+for item in program.array:
+    res = interpret(item, env)
+return res

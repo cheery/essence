@@ -18,20 +18,13 @@
 
     Document model for essence.
 """
-import json
+from util import makelist
 
-## structural nodes, these make up a document
-
-# node directly consists from just nodes and characters.
-
-class node(object):
-    """
-    A document node. May contain characters and other nodes.
-    """
-    def __init__(self, children, tag=None, uid=0):
+class element(object):
+    """Makes up a document. Consists of child elements and characters"""
+    def __init__(self, children, attributes):
         self.children = children
-        self.tag = tag
-        self.uid = uid
+        self.attributes = attributes
 
     def __len__(self):
         return len(self.children)
@@ -45,27 +38,11 @@ class node(object):
     def __setitem__(self, index, value):
         self.children[index] = value
 
-    def context(self, finger):
-        res = [self]
-        for index in finger:
-            self = self[index]
-            res.append(self)
-        return res
-
-    def traverse(self, finger):
-        for index in finger:
-            self = self[index]
-        return self
-
-    def copy(self):
-        children = [copy(child) for child in self]
-        return node(children, self.tag, self.uid)
-
     @property
     def clusters(self):
         string = ''
         for child in self:
-            if isinstance(child, node):
+            if isinstance(child, element):
                 if len(string) > 0:
                     yield string
                     string = ''
@@ -74,109 +51,100 @@ class node(object):
                 string += child
         if len(string) > 0:
             yield string
+            string = ''
+
+    @property
+    def blocks(self):
+        offset = 0
+        for cluster in self.clusters:
+            length = 1 if isinstance(cluster, element) else len(cluster)
+            yield (offset, offset+length), cluster
+            offset += length
+
+    def copy(self):
+        return element(copyList(self), self.attributes)
+
+    def get(self, key, default=None):
+        return self.attributes.get(key, default)
+
+    @property
+    def string(self):
+        return ''.join(self)
+
+    @property
+    def array(self):
+        for cluster in self.clusters:
+            if isinstance(cluster, element):
+                if cluster.get('which') == 'scratch':
+                    continue
+            yield cluster
+
+    @makelist
+    def context(self, finger):
+        current = self
+        yield current
+        for index in finger:
+            current = current[index]
+            yield current
+
+    def isinside(self, index, strict=False):
+        return 0 <= index <= len(self)-strict
+
+    def clamp(self, index, strict=False):
+        return min(max(0, index), len(self)-strict)
 
 def copy(tree):
-    """
-    Make an unique copy of the entire tree.
-    """
-    if isinstance(tree, node):
+    """Make an unique copy of the entire tree."""
+    if isinstance(tree, element):
         return tree.copy()
     assert len(tree) == 1
     return tree
 
-## change records, as concatenated, they represent changes on a document
+def copyList(list):
+    """copy elements in a list or other sequence."""
+    return [copy(child) for child in list]
 
+## change records, as concatenated, they represent changes on a document
+#
 class splice(object):
-    """
-    Replace (finger)[start:stop] with blob.
-    """
+    """Replace selection with a blob"""
     def __init__(self, start, stop, blob):
         self.start = start
         self.stop = stop
         self.blob = blob
 
-    def __call__(self, blob):
-        drop = map(copy, blob[self.start:self.stop])
-        blob[self.start:self.stop] = map(copy, self.blob)
-        return splice(self.start, self.start + len(self.blob), drop)
+    def __call__(self, this):
+        deleted = copyList(this[self.start:self.stop])
+        this[self.start:self.stop] = copyList(self.blob)
+        return splice(self.start, self.start + len(self.blob), deleted)
 
 class build(object):
-    """
-    Build (finger)[start:stop] into a <node tag, uid>
-    """
-    def __init__(self, start, stop, tag=None, uid=None):
+    """Build an element around selection"""
+    def __init__(self, start, stop, attributes):
         self.start = start
         self.stop = stop
-        self.tag = tag
-        self.uid = uid
+        self.attributes = attributes
 
-    def __call__(self, blob):
-        blob[self.start:self.stop] = [node(blob[self.start:self.stop], self.tag, self.uid)]
+    def __call__(self, this):
+        this[self.start:self.stop] = [element(this[self.start:self.stop], self.attributes)]
         return collapse(self.start)
 
 class collapse(object):
-    """
-    Collapse (finger)[offset]
-    """
+    """Collapse element after offset"""
     def __init__(self, offset):
         self.offset = offset
 
-    def __call__(self, blob):
-        collapse = blob[self.offset]
-        blob[self.offset:self.offset+1] = collapse
-        return build(self.offset, len(collapse), collapse.tag, collapse.uid)
+    def __call__(self, this):
+        deleted = this[self.offset]
+        this[self.offset:self.offset+1] = deleted
+        return build(self.offset, len(deleted), deleted.attributes)
 
-class rename(object):
-    """
-    Rename context topmost (finger)
-    """
-    def __init__(self, tag=None, uid=None):
-        self.tag = tag
-        self.uid = uid
+class modify(object):
+    """Modify element attributes"""
+    def __init__(self, attributes):
+        self.attributes = attributes
 
-    def __call__(self, element):
-        prev_tag = prev_uid = None
-        if self.tag is not None:
-            prev_tag = element.tag
-            element.tag = self.tag
-        if self.uid is not None:
-            prev_uid = element.uid
-            element.uid = self.uid
-        return rename(prev_tag, prev_uid)
-
-# application of change record:     undo = do(tree.traverse(finger))
-can_walk_up = lambda tree, finger: len(finger) > 0
-can_walk_left = lambda tree, finger, index: index > 0
-can_walk_right = lambda tree, finger, index: index < len(tree.traverse(finger))
-
-def can_walk_down(tree, finger, index):
-    there = tree.traverse(finger)
-    return 0 <= index < len(there) and isinstance(there[index], node)
-
-def serialize(tree):
-    """
-    Convert essence document into json string dump.
-    """
-    def break_to_lists(obj):
-        if isinstance(obj, node):
-            return {
-                "tag":obj.tag,
-                "uid":obj.uid,
-                "blob":[break_to_lists(child) for child in obj],
-            }
-        if isinstance(obj, list):
-            return [break_to_lists(child) for child in obj]
-        return obj
-    return json.dumps(break_to_lists(tree))
-
-def deserialize(data):
-    """
-    Convert json string dump into essence document.
-    """
-    def wrap_to_nodes(this):
-        if isinstance(this, dict):
-            return node([wrap_to_nodes(child) for child in this["blob"]], this["tag"], this["uid"])
-        if isinstance(this, list):
-            return [wrap_to_nodes(child) for child in this]
-        return this
-    return wrap_to_nodes(json.loads(data))
+    def __call__(self, this):
+        old_attributes = this.attributes
+        this.attributes = self.attributes
+        return modify(old_attributes)

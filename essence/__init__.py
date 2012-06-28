@@ -12,3 +12,19 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
+from fileformat import load, save, load_from_string, save_to_string
+from document import element, copy, copyList, splice, build, collapse, modify
+from util import makelist
+
+# def traverse(self, finger): # or this?
+#        for index in finger:
+#            self = self[index]
+#        return self
+## application of change record:     undo = do(tree.traverse(finger))
+#can_walk_up = lambda tree, finger: len(finger) > 0
+#can_walk_left = lambda tree, finger, index: index > 0
+#can_walk_right = lambda tree, finger, index: index < len(tree.traverse(finger))
+#
+#def can_walk_down(tree, finger, index):
+#    there = tree.traverse(finger)
+#    return 0 <= index < len(there) and isinstance(there[index], node)
