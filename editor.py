@@ -250,7 +250,7 @@ class Editor(object):
     
     @makelist
     def layout_recurse(self, obj, context):
-        context = push(context, obj.get('name'))
+        context = push(context, obj)
         for range, obj in obj.blocks:
             frame = self.layout_hook(obj, context)
             frame.range = range

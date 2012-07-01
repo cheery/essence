@@ -12,6 +12,8 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
+import document
+
 def makelist(fn):
     return lambda *a, **kw: list(fn(*a, **kw))
 
@@ -30,7 +32,7 @@ def delimit(seq, fn, *a, **kw):
         yield obj
 
 def isstring(cluster):
-    return not isinstance(cluster, element)
+    return not isinstance(cluster, document.element)
 
 def isscratch(cluster):
     return cluster.kw.get('which') == 'scratch'
