@@ -47,6 +47,15 @@ def ev_call(exp, env):
     return appl(procedure, arguments)
 defname('call', ev_call)
 
+def ev_string(exp, env):
+    return exp.string
+defname('string', ev_string)
+
+def ev_getitem(exp, env):
+    left, right = list_of_values(exp, env)
+    return left[right]
+defname('getitem', ev_getitem)
+
 def ev_variable(exp, env):
     return env[exp.string]
 defname('variable', ev_variable)
