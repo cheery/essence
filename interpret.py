@@ -1,3 +1,17 @@
+# This file is part of Essential Editor Research Project (EERP)
+#
+# EERP is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# EERP is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with EERP.  If not, see <http://www.gnu.org/licenses/>.
 from essence import load
 import sys
 
@@ -21,10 +35,10 @@ def interpret(expr, env):
         return int(expr.string) # on early versions it's a string.
     if name == 'mul':
         left, right = expr.array
-        return left * right
+        return interpret(left, env) * interpret(right, env)
     if name == 'add':
         left, right = expr.array
-        return left + right
+        return interpret(left, env) + interpret(right, env)
     if name == 'set':
         left, right = expr.array
         env[left] = interpret(right, env)
@@ -48,10 +62,10 @@ def interpret(expr, env):
     raise Exception("unknown clause %r", expr)
 
 program = load(sys.argv[1])
-assert program.get('tag') == 's-expr'
+assert program.get('name') == 's-expr'
 
 env = {}
 res = None
 for item in program.array:
     res = interpret(item, env)
-return res
+print res

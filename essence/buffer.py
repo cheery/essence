@@ -57,6 +57,12 @@ class Buffer(object):
         name = self.filename or "[No Name]"
         return name + {True: ' [+]', False: ''}[self.modified]
 
+    def save(self):
+        if self.filename is not None:
+            save(self.filename, self.document)
+            self.filerev = self.rev
+            return True
+
 #class Buffer(object):
 #    def __init__(self, document, history, view=None, sel=None, filename=None):
 #        self.document = document
@@ -66,14 +72,6 @@ class Buffer(object):
 #        self.filename = filename
 #        self.moid = self.prev_moid = 0
 #        self.next_moid = 1
-#
-#    @property
-#    def caption(self):
-#        return (self.filename or "[No Name]") + (' [+]' if self.modified else '')
-#
-#    @property
-#    def modified(self):
-#        return self.moid != self.prev_moid
 #
 #    def do(self, finger, operation):
 #        assert self.sel.finger == finger # don't do this later >:-(
@@ -109,12 +107,4 @@ class Buffer(object):
 #        h0.append(reverse)
 #        self.moid = moid
 #        self.view = None
-#        return True
-#
-#    def save(self, path=None): # this saving method cannot be trusted
-#        if path is None:
-#            return False
-#        save(path, self.document)
-#        if path == self.filename:
-#            self.prev_moid = self.moid
 #        return True

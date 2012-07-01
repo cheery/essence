@@ -13,11 +13,12 @@
 # You should have received a copy of the GNU General Public License
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
 from essence.ui import color, window, get, eventloop, empty
-from essence import element, copy, copyList, splice, build, collapse, modify, load, load_from_string, save_to_string, makelist
+from essence import element, copy, copyList, splice, build, collapse, modify, load, load_from_string, save_to_string, makelist, pull, push
 from essence.layout import string, image, xglue, yglue, group, expando, engine
 from essence.buffer import Buffer
 from essence.selection import Selection
 from essence.pluginmanager import default_plugin_directory, load_all_plugins
+from essence.util import delimit
 from random import randint
 from sys import argv, exit
 from pygame import scrap
@@ -53,13 +54,31 @@ keybindings = {
     pygame.K_TAB: 'tab',
     pygame.K_ESCAPE: 'escape',
     pygame.K_a: 'a',
-    pygame.K_s: 's',
-    pygame.K_q: 'q',
-    pygame.K_u: 'u',
-    pygame.K_r: 'r',
-    pygame.K_y: 'y',
-    pygame.K_n: 'n',
+    pygame.K_b: 'b',
+    pygame.K_c: 'c',
+    pygame.K_d: 'd',
+    pygame.K_e: 'e',
+    pygame.K_f: 'f',
+    pygame.K_g: 'g',
+    pygame.K_h: 'h',
+    pygame.K_i: 'i',
+    pygame.K_j: 'j',
+    pygame.K_k: 'k',
+    pygame.K_l: 'l',
     pygame.K_m: 'm',
+    pygame.K_n: 'n',
+    pygame.K_o: 'o',
+    pygame.K_p: 'p',
+    pygame.K_q: 'q',
+    pygame.K_r: 'r',
+    pygame.K_s: 's',
+    pygame.K_t: 't',
+    pygame.K_u: 'u',
+    pygame.K_v: 'v',
+    pygame.K_w: 'w',
+    pygame.K_x: 'x',
+    pygame.K_y: 'y',
+    pygame.K_z: 'z',
     pygame.K_DELETE: 'delete',
     pygame.K_BACKSPACE: 'backspace',
     pygame.K_INSERT: 'insert',
@@ -99,28 +118,19 @@ class ContextVisual(object):
             screen(uidl, area)
             x += width + 10
 
-def isstring(cluster):
-    return not isinstance(cluster, element)
-
-def isscratch(cluster):
-    return cluster.kw.get('which') == 'scratch'
-
-def tagged(cluster, tag):
-    return cluster.kw.get('tag') == tag
-
-@makelist
-def delimit(seq, fn, *a, **kw):
-    it = iter(seq)
-    yield it.next()
-    for obj in it:
-        yield fn(*a, **kw)
-        yield obj
-
 def with_ranges(clusters, offset=0):
     for cluster in clusters:
         length = 1 if isinstance(cluster, sequence) else len(cluster)
         yield (offset, offset+length), cluster
         offset += length
+
+#
+# define := name, arguments, body,
+# arguments := * variable
+# body := * s-expr
+# s-expr := call | mathop
+# statement := define | call | ...
+#
 
 class Editor(object):
     def __init__(self):
@@ -132,10 +142,20 @@ class Editor(object):
         self.font = get('font/proggy_tiny', 'font')
         self.border = get('assets/border.png', 'patch-9')
 
+        self.plugins = load_all_plugins([default_plugin_directory], self)
+
         self.file0 = Buffer(
             filename = (argv[1] if len(argv) > 1 else None),
         )
         self.selection = Selection(self.file0, (), 0, 0)
+        self.hook('loadbuffer', self, self.file0)
+
+    def hook(self, name, *a, **kw):
+        for plugin in self.plugins:
+            if hasattr(plugin, name):
+                res = getattr(plugin, name)(*a, **kw)
+                if res is not None:
+                    return res
 
     def frame(self, screen, dt):
         screen(almost_white)
@@ -162,32 +182,65 @@ class Editor(object):
             if mod & mask != 0:
                 modifiers.add(ident)
 
-        if key == 'q' and 'ctrl' in modifiers:
-            exit(0)
+        if self.hook('keyboard', self, key, modifiers, ch):
+            return
 
         selection = self.selection
-        if len(ch) == 1:
-            operation = splice(selection.start, selection.stop, [ch])
-            selection.buffer.do(
-                selection.finger,
-                operation,
-            )
-            selection = Selection(
-                selection.buffer,
-                selection.finger,
-                selection.start + 1,
-                selection.start + 1,
-            )
-            self.selection = selection
+        shift = 'shift' in modifiers
+        if 'ctrl' in modifiers:
+            if key == "q":
+                exit(0)
+            if key == "s":
+                selection.buffer.save()
+            if key == "h":
+                self.selection = selection.move(-1, shift)
+            if key == "l":
+                self.selection = selection.move(+1, shift)
+            if key == "j" and selection.descendable(selection.cursor):
+                self.selection = selection.descend(selection.cursor)
+            if key == "e":
+                self.selection = selection.build(shift)
+            if key == "c" and selection.ascendable:
+                self.selection = selection.collapse()
+            if key == "k" and selection.ascendable:
+                self.selection = selection.ascend
+            if key == "b":
+                self.selection = selection.move(selection.bounds[0], shift, relative=False)
+            if key == "w":
+                self.selection = selection.move(selection.bounds[1], shift, relative=False)
+            if key == "m":
+                start, stop = selection.textbounds
+                selection = selection.grasp(start, stop)
+                kw = dict(name=''.join(selection.yank))
+                self.selection = selection.splice([]).modify(kw)
 
-    def layout_hook(self, obj):
+                #self.selection = selection.splice([]).modify({'name':name})
+        elif 'backspace' == key:
+            self.selection = selection.move(-1, True).splice([])
+        elif 'delete' == key:
+            self.selection = selection.move(+1, True).splice([])
+        elif 'enter' == key:
+            if shift:
+                self.selection = selection.walk_backward()
+            else:
+                self.selection = selection.walk_forward()
+        elif len(ch) == 1:
+            self.selection = selection.splice([ch])
+
+    def layout_hook(self, obj, context=()):
+        frame = self.hook('layout', self, obj, context)
+        if frame is None:
+            frame = self.default_layout_hook(obj, context)
+        return frame
+    
+    def default_layout_hook(self, obj, context):
         if not isinstance(obj, element):
             return string(self.font(obj))
-        frames = self.layout_recurse(obj)
+        frames = self.layout_recurse(obj, context)
         if obj.get('which') == 'scratch':
-            return group(delimit(frames, yglue, 8, 2),
-                background = black,
-                padding = (5,5,5,5),
+            return group(delimit(frames, yglue, 8, 2) or [string(self.font('nil').mul(cyan))],
+                background = self.border,
+                padding = (10,10,10,10),
             )
         name = string(self.font('{%s}' % obj.get('name')).mul(red))
         return group(delimit([name] + frames, xglue, 8, 12),
@@ -196,9 +249,10 @@ class Editor(object):
         )
     
     @makelist
-    def layout_recurse(self, obj):
+    def layout_recurse(self, obj, context):
+        context = push(context, obj.get('name'))
         for range, obj in obj.blocks:
-            frame = self.layout_hook(obj)
+            frame = self.layout_hook(obj, context)
             frame.range = range
             yield frame
 
@@ -214,52 +268,8 @@ class Editor(object):
             if area:
                 screen.mul(blue, area)
 
-#        self.buf = Buffer(
-#            document = document,
-#            history = ([],[]),
-#            filename = argv[1] if len(argv) > 1 else None,
-#        )
-#        self.sel = self.buf.sel = Selection(self.buf)
+
 #        self.new_console()
-#
-#        self.plugins = []
-#        for module in load_all_plugins([default_plugin_directory]):
-#            if not hasattr(module, 'plugins'):
-#                continue
-#            for plugin in module.plugins:
-#                self.plugins.append(plugin(self))
-#        self.plugins.sort(key=lambda obj: obj.priority)
-#
-#    def keyboard_hook(self, mode, key, modifiers, ch):
-#        for plugin in self.plugins:
-#            if plugin.keyboard_hook(mode, key, modifiers, ch):
-#                return True
-#        return False
-#
-#    def layout_hook(self, obj, context, gen_children):
-#        for plugin in self.plugins:
-#            frame = plugin.layout_hook(obj, context, gen_children)
-#            if frame is not None:
-#                return frame
-#        # return some default instead
-#        if isinstance(obj, node) and obj.tag == 'root':
-#            children = []
-#            for last, frame in ilast(gen_children()):
-#                if last is not None:
-#                    children.append(Glue(8, 30))
-#                children.append(frame)
-#            return Column(children, iscluster=True)
-#
-#        if isinstance(obj, node):
-#            children = []
-#            for last, frame in ilast(gen_children()):
-#                if last is not None:
-#                    children.append(Glue(8, 30))
-#                children.append(frame)
-#            frame = Row(children, iscluster=True)
-#            return Padding(frame, left=8, right=8, top=2, bottom=2, background=self.border)
-#        else:
-#            return String(obj, self.font, iscluster=True)
 #
 #    def new_console(self):
 #        self.console = Buffer(
@@ -268,9 +278,6 @@ class Editor(object):
 #        )
 #        self.console.sel = Selection(self.console)
 #        return self.console
-#
-#
-#
 #
 ##        screen(almost_white)
 ##

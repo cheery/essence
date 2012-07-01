@@ -12,25 +12,14 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
-def makelist(fn):
-    return lambda *a, **kw: list(fn(*a, **kw))
+from essence import require_api_version
+require_api_version(major=2, minor=0)
+from essence import string, image, xglue, yglue, group, expando, delimit
+from essence.ui import composite, color, empty
 
-def pull(finger):
-    return finger[:-1], finger[-1]
+class CoffeeSipper(object):
+    priority = 1
+    def __init__(self, editor):
+        pass
 
-def push(finger, index):
-    return finger + (index,)
-
-@makelist
-def delimit(seq, fn, *a, **kw):
-    it = iter(seq)
-    yield it.next()
-    for obj in it:
-        yield fn(*a, **kw)
-        yield obj
-
-def isstring(cluster):
-    return not isinstance(cluster, element)
-
-def isscratch(cluster):
-    return cluster.kw.get('which') == 'scratch'
+plugins = [CoffeeSipper]

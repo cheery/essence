@@ -24,21 +24,25 @@ def list_plugins(directory):
         names.add(splitext(name)[0])
     return names
 
-def load_all_plugins(directories):
+def load_all_plugins(directories, *a, **kw):
     plugins = []
     for directory in directories:
         for name in list_plugins(directory):
             fd, pathname, desc = find_module(name, [directory])
             try:
                 plugin = load_module(name, fd, pathname, desc)
-                plugins.append(plugin)
+                if not hasattr(plugin, 'plugins'):
+                    continue
+                for plugin in plugin.plugins:
+                    plugins.append(plugin(*a, **kw))
             except APIVersionMismatch, e:
                 print "%s: %r" % (pathname, e)
+    plugins.sort(key=lambda obj: obj.priority)
     return plugins
 
 default_plugin_directory = join(dirname(__file__), 'plugins')
 
-major = _major = 1
+major = _major = 2
 minor = _minor = 0
 patch = 0
 

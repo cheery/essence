@@ -12,10 +12,9 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
-from essence.pluginmanager import require_api_version
+from essence import require_api_version
 require_api_version(major=0, minor=0)
-from essence.document import node
-from essence.layout import String, Image, Glue, Padding, Row, Column, ilast
+from essence import string, image, xglue, yglue, group, expando, delimit
 from essence.ui import composite, color, empty
 
 precedence = {
