@@ -1,5 +1,46 @@
 IRC: Freenode.net#essence
 
+Structural editing is highly researched topic with poor yield in results.
+Because of this we are still using text editors to edit code and even
+formatted text documents. The Essential Editor Research Project is an
+attempt to produce a generic, flexible and simple editor that would
+substitute text-based programming interfaces.
+
+My own interest to the project come from a journey in programming language
+design. I want to remove intolerable restrictions that parsers introduce to
+the designers of programming languages. Parser forces a tradeoff where you
+should decide between flexible language, straightforward implementation and
+user satisfaction. If you aim center like I tried, you'll likely get nothing.
+I want to empty the pajatso by punching my fist through the damn crap.
+
+Even if you aim only to the side of that parser triangle, the chances are
+you'll miss. Guido did his best to make a pleasant language out of python,
+he succeed on some things but python is one clusterfuck if you'd like to
+get it interface with C-codebase or handle typed arrays well. Python sucks
+in convenience at GUI programming because you cannot pass anonymous function
+block to a function call. You have to mess your namespace in order to do that.
+I hate python although I use it. It's still the most convenient programming 
+language to use, if you ignore coffeescript.
+
+EERP has proved to be truly a research project. I've rewritten the codebase
+multiple times and understood this project is a puzzle that doesn't unlodge
+by just throwing more work on it. An untolerably complex editor couldn't be
+ever adopted by anyone because the programmer must know how his tools are
+working in order to use them efficiently. I must rely on my intelligency
+and laziness to get any results. Studying the project itself reveals an
+interesting pattern, where complete redesign of one module ripples to other
+program modules. This rippling causes partial rewrite of the whole project
+at times. To combat the ripple, considerable and cognitive work-avoidance
+is required to keep the project under control of a single human. Failure in
+taking the ripple to account will cause a catastropic slowdown on the progress.
+
+There's the one obvious slashback that usage of project means you have to throw
+away about all of your text-based toolchain. After I've started the project,
+I've discovered some merits that might turn the table over. I'm really pissed
+up to text representation of structures, and that might mean the table will
+actually soar through the air and never land anywhere again as atmospheric
+particles tear it apart... But throwing the table around is my plan.
+
 == Dependencies ==
 
 You need casuarius and pygame to run the editor.
@@ -14,6 +55,9 @@ If a filename is given and it exists, the editor attempts to load the file.
 In case of failure it will likely crash. Otherwise, a window appears.
 
 == Keybindings ==
+
+These keybindings are deprecated, but demonstrate what
+there has been in the previous versions.
 
 === Navigation ===
 
