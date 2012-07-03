@@ -269,13 +269,12 @@ class Editor(object):
 
         # this element is UNKNOWN, therefore we are doing this...
         name = string(self.font('{%s}' % obj.name).mul(red))
-        context = push(context, obj)
         holes = []
-        for hole in obj.holes:
+        for index, hole in enumerate(obj.holes):
             if isinstance(hole, dot):
-                holes.append(self.layout_dot(hole, context))
+                holes.append(self.layout_dot(obj, index, context))
             if isinstance(hole, star):
-                frames = self.layout_star(hole, context)
+                frames = self.layout_star(obj, index, context)
                 holes.append(group(delimit(frames, yglue, 4,0),
                     padding = (5, 5, 5, 5),
                 ))
@@ -296,15 +295,21 @@ class Editor(object):
 #            padding=(10,10,10,10),
 #        )
 
-    def layout_dot(self, hole, context):
+    def layout_dot(self, obj, index, context):
+        context = push(context, (obj, index))
+        hole = obj.holes[index]
         frame = self.layout_hook(hole.a, context)
         frame.hole = hole
         return frame
 
     @makelist
-    def layout_star(self, hole, context, plac="*"):
+    def layout_star(self, obj, index, context, plac="*"):
+        context = push(context, (obj, index))
+        hole = obj.holes[index]
         for partial in hole.partials:
-            yield self.layout_dot(partial, context)
+            frame = self.layout_hook(partial.a, context)
+            frame.hole = partial
+            yield frame
         if len(hole.a) == 0:
             frame = string(self.font(plac).mul(gray))
             frame.hole = hole

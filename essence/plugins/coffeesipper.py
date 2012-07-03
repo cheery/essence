@@ -92,10 +92,9 @@ class CoffeeSipper(object):
             return True
 
     def layout(self, editor, obj, context):
-        parent = context[-1] if len(context) > 0 else None
-        context = push(context, obj)
-        ys = lambda i, plac="*": editor.layout_star(obj.holes[i], context, plac)
-        y = lambda i: editor.layout_dot(obj.holes[i], context)
+        parent = context[-1][0] if len(context) > 0 else None
+        ys = lambda i, plac="*": editor.layout_star(obj, i, context, plac)
+        y = lambda i: editor.layout_dot(obj, i, context)
 
         if isstring(obj):
             if parent.name == 'int':
