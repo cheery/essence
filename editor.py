@@ -13,13 +13,14 @@
 # You should have received a copy of the GNU General Public License
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
 from essence.ui import color, window, get, eventloop, empty
-from essence import element, copy, copyList, splice, build, collapse, modify, load, load_from_string, save_to_string, makelist, pull, push
+from essence import star, dot, element, iselement, empty_template, filled_template, copy, copyList, makelist, pull, push, holepartial, dotmarker, starmarker
+from essence.document import dotmarker, starmarker
 from essence.layout import string, image, xglue, yglue, group, expando, engine
 from essence.buffer import Buffer
 from essence.selection import Selection
 from essence.pluginmanager import default_plugin_directory, load_all_plugins
 from essence.util import delimit
-from random import randint
+from random import randint, choice
 from sys import argv, exit
 from pygame import scrap
 import os
@@ -33,10 +34,11 @@ blue = color(0x00, 0x00, 0xFF)
 white = color(0xFF, 0xFF, 0xFF)
 gray = color(0x80, 0x80, 0x80)
 dark_gray = color(0x10, 0x10, 0x10)
+light_gray = color(0xE0, 0xE0, 0xE0)
 
 black = color(0x00, 0x00, 0x00)
-yellow = color(0x20, 0x20, 0x10)
-dark_gray = color(0x10, 0x10, 0x10)
+dark_gray = color(0x20, 0x20, 0x10)
+#dark_gray = color(0x10, 0x10, 0x10)
 white = color(0xFF, 0xFF, 0xFF)
 transparent_white = color(0xFF, 0xFF, 0xFF, 0x80)
 
@@ -124,6 +126,9 @@ def with_ranges(clusters, offset=0):
         yield (offset, offset+length), cluster
         offset += length
 
+def padding((x,y,w,h), (l,t,r,b)):
+    return x-l, y-t, w+l+r, h+t+b
+
 #
 # define := name, arguments, body,
 # arguments := * variable
@@ -147,7 +152,7 @@ class Editor(object):
         self.file0 = Buffer(
             filename = (argv[1] if len(argv) > 1 else None),
         )
-        self.selection = Selection(self.file0, (), 0, 0)
+        self.selection = Selection(self.file0, (), self.file0.document, starmarker(self.file0.document.holes[0], 0, 0))
         self.hook('loadbuffer', self, self.file0)
 
     def hook(self, name, *a, **kw):
@@ -158,7 +163,7 @@ class Editor(object):
                     return res
 
     def frame(self, screen, dt):
-        screen(almost_white)
+        screen(color(0x00, 0x00, 0x00))
 
         root = self.file0.render(self.layout_hook)
 
@@ -190,42 +195,65 @@ class Editor(object):
         if 'ctrl' in modifiers:
             if key == "q":
                 exit(0)
+            if key == "t":
+                print self.last_highlight
+            if key == "a":
+                selection.expand()
             if key == "s":
                 selection.buffer.save()
-            if key == "h":
-                self.selection = selection.move(-1, shift)
-            if key == "l":
-                self.selection = selection.move(+1, shift)
-            if key == "j" and selection.descendable(selection.cursor):
-                self.selection = selection.descend(selection.cursor)
-            if key == "e":
-                self.selection = selection.build(shift)
-            if key == "c" and selection.ascendable:
-                self.selection = selection.collapse()
-            if key == "k" and selection.ascendable:
-                self.selection = selection.ascend
-            if key == "b":
-                self.selection = selection.move(selection.bounds[0], shift, relative=False)
-            if key == "w":
-                self.selection = selection.move(selection.bounds[1], shift, relative=False)
-            if key == "m":
-                start, stop = selection.textbounds
-                selection = selection.grasp(start, stop)
-                kw = dict(name=''.join(selection.yank))
-                self.selection = selection.splice([]).modify(kw)
-
-                #self.selection = selection.splice([]).modify({'name':name})
+#            if key == "h":
+#                self.selection = selection.move(-1, shift)
+#            if key == "l":
+#                self.selection = selection.move(+1, shift)
+#            if key == "j" and selection.descendable(selection.cursor):
+#                self.selection = selection.descend(selection.cursor)
+#            if key == "e":
+#                self.selection = selection.build(shift)
+#            if key == "c" and selection.ascendable:
+#                self.selection = selection.collapse()
+#            if key == "k" and selection.ascendable:
+#                self.selection = selection.ascend
+#            if key == "b":
+#                self.selection = selection.move(selection.bounds[0], shift, relative=False)
+#            if key == "w":
+#                self.selection = selection.move(selection.bounds[1], shift, relative=False)
+#            if key == "m":
+#                start, stop = selection.textbounds
+#                selection = selection.grasp(start, stop)
+#                kw = dict(name=''.join(selection.yank))
+#                self.selection = selection.splice([]).modify(kw)
+#
+#                #self.selection = selection.splice([]).modify({'name':name})
+#        elif 'enter' == key:
+#            if shift:
+#                self.selection = selection.walk_backward()
+#            else:
+#                self.selection = selection.walk_forward()
+        elif 'tab' == key:
+            name = choice(['toy-object', 'reindeer', 'baaz', 'santa', 'foo', 'guux', 'lol'])
+            holes = [choice([star, dot]) for _ in range(randint(0, 5))]
+            selection.replace([empty_template(name, *holes)], branch_in=True)
         elif 'backspace' == key:
-            self.selection = selection.move(-1, True).splice([])
+            if selection.empty: selection.move(-1, True)
+            selection.remove()
         elif 'delete' == key:
-            self.selection = selection.move(+1, True).splice([])
+            if selection.empty: selection.move(+1, True)
+            selection.remove()
+        elif 'left' == key:
+            selection.move(-1, shift)
+        elif 'right' == key:
+            selection.move(+1, shift)
+        elif 'enter' == key and shift:
+            selection.walk_backwards()
         elif 'enter' == key:
-            if shift:
-                self.selection = selection.walk_backward()
-            else:
-                self.selection = selection.walk_forward()
+            selection.walk()
+        elif 'up' == key:
+            selection.move(selection.bounds[0], shift, relative=False)
+        elif 'down' == key:
+            selection.move(selection.bounds[1], shift, relative=False)
         elif len(ch) == 1:
-            self.selection = selection.splice([ch])
+            selection.replace([ch])
+#            self.selection = selection.splice([ch])
 
     def layout_hook(self, obj, context=()):
         frame = self.hook('layout', self, obj, context)
@@ -234,39 +262,94 @@ class Editor(object):
         return frame
     
     def default_layout_hook(self, obj, context):
-        if not isinstance(obj, element):
+        if obj is None:
+            return group([string(self.font('none'))], padding = (5, 5, 5, 5))
+        if not iselement(obj):
             return string(self.font(obj))
-        frames = self.layout_recurse(obj, context)
-        if obj.get('which') == 'scratch':
-            return group(delimit(frames, yglue, 8, 2) or [string(self.font('nil').mul(cyan))],
-                background = self.border,
-                padding = (10,10,10,10),
-            )
-        name = string(self.font('{%s}' % obj.get('name')).mul(red))
-        return group(delimit([name] + frames, xglue, 8, 12),
-            background=self.border,
-            padding=(10,10,10,10),
-        )
-    
-    @makelist
-    def layout_recurse(self, obj, context):
+
+        # this element is UNKNOWN, therefore we are doing this...
+        name = string(self.font('{%s}' % obj.name).mul(red))
         context = push(context, obj)
-        for range, obj in obj.blocks:
-            frame = self.layout_hook(obj, context)
-            frame.range = range
+        holes = []
+        for hole in obj.holes:
+            if isinstance(hole, dot):
+                holes.append(self.layout_dot(hole, context))
+            if isinstance(hole, star):
+                frames = self.layout_star(hole, context)
+                holes.append(group(delimit(frames, yglue, 4,0),
+                    padding = (5, 5, 5, 5),
+                ))
+
+        return group(delimit([name] + holes, yglue, 0, 0)
+        )
+
+
+#        frames = self.layout_recurse(obj, context)
+#        if obj.get('which') == 'scratch':
+#            return group(delimit(frames, yglue, 8, 2) or [string(self.font('nil').mul(cyan))],
+#                background = self.border,
+#                padding = (10,10,10,10),
+#            )
+#        name = string(self.font('{%s}' % obj.get('name')).mul(red))
+#        return group(delimit([name] + frames, xglue, 8, 12),
+#            background=self.border,
+#            padding=(10,10,10,10),
+#        )
+
+    def layout_dot(self, hole, context):
+        frame = self.layout_hook(hole.a, context)
+        frame.hole = hole
+        return frame
+
+    @makelist
+    def layout_star(self, hole, context, plac="*"):
+        for partial in hole.partials:
+            yield self.layout_dot(partial, context)
+        if len(hole.a) == 0:
+            frame = string(self.font(plac).mul(gray))
+            frame.hole = hole
             yield frame
+        
+#                if len(frames) == 0:
+#                    #frames = [string(self.font("*").mul(gray))]
 
     def highlight(self, screen, selection):
-        top = None
-        for top in selection.frame_context:
-            screen.sub(dark_gray, top.area)
-        if top is None:
-            return
-        start, stop = selection.start, selection.stop
-        for frame in top.find():
-            area = frame.highlight(start, stop)
-            if area:
-                screen.mul(blue, area)
+        marker = selection.marker
+        frames = selection.buffer.visual
+        areas = []
+
+        if isinstance(marker, dotmarker):
+            for frame in frames.find():
+                if marker.test(frame.hole):
+                    area = frame.area
+                    areas.append(area)
+                    screen.mul(yellow, area)
+                    break
+
+        if isinstance(marker, starmarker):
+            start, stop = marker.start, marker.stop
+            for frame in frames.find():
+                if marker.test(frame.hole):
+                    area = frame.highlight(start, stop)
+                    if area:
+                        areas.append(area)
+                        screen.add(gray, area)
+                if marker.test2(frame.hole):
+                    area = padding(frame.area, (3,3,3,3))
+                    screen.add(gray, area)
+                    areas.append(area)
+        self.last_highlight = areas
+
+#        top = None
+#        for top in selection.frame_context:
+#            screen.sub(dark_gray, top.area)
+#        if top is None:
+#            return
+#        start, stop = selection.start, selection.stop
+#        for frame in top.find():
+#            area = frame.highlight(start, stop)
+#            if area:
+#                screen.mul(blue, area)
 
 
 #        self.new_console()

@@ -14,7 +14,7 @@
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
 from pluginmanager import require_api_version
 from fileformat import load, save, load_from_string, save_to_string
-from document import element, copy, copyList, splice, build, collapse, modify
+from document import star, dot, element, iselement, empty_template, filled_template, replace, copy, copyList, holepartial, dotmarker, starmarker
 from util import makelist, pull, push, delimit, isstring, isscratch
 from essence.layout import string, image, xglue, yglue, group, expando, engine
 

@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with EERP.  If not, see <http://www.gnu.org/licenses/>.
 from fileformat import load, save
-from document import element
+from document import element, empty_template, star, dot
 from os.path import exists
 
 def valid_path(filename):
@@ -24,28 +24,28 @@ class Rev(object):
         pass
 
     def next(self):
-        return Modid()
+        return Rev()
 
 class Buffer(object):
     def __init__(self, document=None, filename=None):
         if document is None and valid_path(filename):
             document = load(filename)
         elif document is None:
-            document = element([], {'name':'root'})
+            document = empty_template('root', star)
+            #document = element([], {'name':'root'})
         self.document = document
         self.filename = filename
         self.visual = None
         self.rev = self.filerev = Rev()
 
-    def render(self, layout_hook):
+    def render(self, layout):
         if self.visual is None:
-            self.visual = layout_hook(self.document)
+            self.visual = layout(self.document)
         return self.visual
 
-    def do(self, finger, operation):
-        top = self.document.context(finger)[-1]
-        undo = operation(top)
-        self.rev = Rev()
+    def do(self, hole, operation):
+        undo = operation.apply(hole)
+        self.rev = self.rev.next()
         self.visual = None
 
     @property

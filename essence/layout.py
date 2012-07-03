@@ -16,11 +16,12 @@
 #TODO: table layout
 #TODO: breaker, breakable, (penalty, pre, post) into glue
 
+import itertools
 from casuarius import Solver, ConstraintVariable, weak, medium, strong, required
 valueof = lambda obj: obj.value if hasattr(obj, 'value') else obj
 
 class declaration(object):
-    range = None
+    hole = None
     def render(self, surface):
         pass
     
@@ -56,7 +57,7 @@ class frame(declaration):
         engine.require(self.bottom + parent.padding[3] <= parent.bottom)
 
     def highlight(self, start1, stop1):
-        start0, stop0 = self.range
+        start0, stop0 = self.hole.start, self.hole.stop
         if stop0 >= start1 and stop1 >= start0:
             start, stop = max(start0, start1) - start0, min(stop0, stop1) - start0
             left, top, width, height = self.area
@@ -77,7 +78,7 @@ class string(frame):
         surface(self.label, self.area)
 
     def highlight(self, start1, stop1):
-        start0, stop0 = self.range
+        start0, stop0 = self.hole.start, self.hole.stop
         if stop0 >= start1 and stop1 >= start0:
             start, stop = max(start0, start1) - start0, min(stop0, stop1) - start0
             left, top, width, height = self.area
@@ -95,7 +96,8 @@ class image(frame):
         self.yalign = self.top + self.height/2 if yalign is None else yalign(self)
 
     def render(self, surface):
-        surface(self.image, self.area)
+        if self.image:
+            surface(self.image, self.area)
 
 class xglue(declaration):
     def __init__(self, gap, stretch):
@@ -165,12 +167,10 @@ class group(frame):
             decl.render(surface)
 
     def find(self):
-        for decl in self:
-            if decl.range is None:
-                for subdecl in decl.find():
-                    yield subdecl
-            else:
-                yield decl
+        for obj in self:
+            yield obj
+            for desc in obj.find():
+                yield desc
 
 class expando(frame):
     def __init__(self, element, width, height, expanded=True, background=None, xalign=None, yalign=None):
@@ -198,11 +198,9 @@ class expando(frame):
             self.element.render(surface)
 
     def find(self):
-        if self.element.range is None:
-            for decl in self.element.find():
-                yield decl
-        else:
-            yield self.element
+        yield self.element
+        for decl in self.element.find():
+            yield decl
 
 class engine(object):
     def __init__(self):

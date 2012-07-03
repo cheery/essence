@@ -22,26 +22,18 @@ import document, StringIO
 
 def test():
     import zlib
-    m = []
-    m.extend('huh')
-    n = [ ]
-    n.extend('hello')
-    n.append(document.element(m, dict(
-        foo='guux',
-        bar='lox'
-    )))
-    n.extend('world')
-    root = document.element(n, dict(
-        tag='root',
-    ))
+    root = document.element('root', [
+        document.star([
+            'huh',
+        ])
+    ])
     pre = len(root)
     s = save_to_string(root)
     print "string length=%i, compressed=%i" % (len(s), len(zlib.compress(s)))
     root = load_from_string(s)
     assert len(root) == pre
-    assert root.attributes.get('tag') == 'root'
-    assert root[5].attributes.get('bar') == 'lox'
-    assert len(root[5]) == 3
+    assert root.name == 'root'
+    assert root.holes[0].a == ['huh']
 
 def load(filename):
     with open(filename, 'r') as fd:
@@ -117,35 +109,66 @@ class ByteStream(object):
             self.write_string(key)
             self.write_string(value)
 
-    def read_elements(self):
-        length = self.read_uint32()
-        blob = []
-        for i in range(length):
-            type = self.read_uint32()
-            if type == 0:
-                blob.extend(self.read_string())
-            if type == 1:
-                blob.append(self.read_element())
-        return blob
+    def read_item(self):
+        type = self.read_uint32()
+        if type == 0:
+            return self.read_string()
+        if type == 1:
+            return self.read_element()
+        if type == 2:
+            return None
 
-    def write_clusters(self, clusters):
-        self.write_uint32(len(clusters))
-        for obj in clusters:
-            if isinstance(obj, document.element):
-                self.write_uint32(1)
-                self.write_element(obj)
-            else:
-                self.write_uint32(0)
-                self.write_string(obj)
+    def write_item(self, obj):
+        if obj is None:
+            self.write_uint32(2)
+        elif isinstance(obj, document.element):
+            self.write_uint32(1)
+            self.write_element(obj)
+        else:
+            self.write_uint32(0)
+            self.write_string(obj)
+
+    def read_hole(self):
+        type = self.read_uint32()
+        if type == 0:
+            return document.dot(self.read_item())
+        if type == 1:
+            length = self.read_uint32()
+            blob = []
+            for i in range(length):
+                blob.append(self.read_item())
+            return document.star(blob)
+
+    def write_hole(self, hole):
+        if isinstance(hole, document.dot):
+            self.write_uint32(0)
+            self.write_item(hole.a)
+        else:
+            self.write_uint32(1)
+            self.write_uint32(len(hole.a))
+            for obj in hole.a:
+                self.write_item(obj)
 
     def write_element(self, element):
-        self.write_attributes(element.attributes)
-        self.write_clusters(list(element.clusters))
+        self.write_string(element.name)
+        self.write_uint32(len(element.holes))
+        for hole in element.holes:
+            self.write_hole(hole)
+        
+        #self.write_attributes(element.attributes)
+        #self.write_clusters(list(element.clusters))
 
     def read_element(self):
-        attributes = self.read_attributes()
-        children = self.read_elements()
-        return document.element(children, attributes)
+        name = self.read_string()
+        length = self.read_uint32()
+        holes = []
+        for i in range(length):
+            holes.append(self.read_hole())
+        return document.element(name, holes)
+
+        #attributes = self.read_attributes()
+        #children = self.read_elements()
+        #return document.element(children, attributes)
 
 if __name__ == '__main__':
     test()
