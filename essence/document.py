@@ -113,7 +113,7 @@ class element(object):
     def as_string(self, index):
         return ''.join(self.holes[index].a)
 
-    def as_list(self, index):
+    def __getitem__(self, index):
         return self.holes[index].a
 
 def iselement(obj):
