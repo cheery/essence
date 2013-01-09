@@ -1,0 +1,70 @@
+#!/usr/bin/env python
+
+from argparse import ArgumentParser
+parser = ArgumentParser(description="""
+    Edit tree files specified by essence project.
+""")
+parser.add_argument('filename', nargs='?')
+args = parser.parse_args()
+
+from essence2 import vec2, rgba, rectangle, clamp
+from essence2 import ui
+
+red = rgba(255, 0, 0)
+black = rgba(0, 0, 0)
+white = rgba(255, 255, 255)
+
+selc = ui.blend_sub(rgba(50, 50, 0, 50))
+
+background_color = rgba(0x20, 0x30, 0x40)
+border = ui.Patch9.load('assets/border.png')
+box = rectangle(vec2(100, 100), vec2(100, 100))
+
+clickpos = vec2(0, 0)
+mousepos = vec2(0, 0)
+
+font = ui.Font.load('font/proggy_tiny')
+
+text = font("Hello world and lollers!")(ui.blend_mult(red))
+text.geometry.base += vec2(150, 300)
+
+def event(name, arguments):
+    global mousepos, clickpos
+    if name == 'frame':
+        screen = arguments[0]
+        screen(background_color)
+        screen(border, box)
+        screen(text)
+
+        click = text.nearest_caret(clickpos)
+        nearest = text.nearest_caret(mousepos)
+        for index, caret in enumerate(text.carets()):
+            if index == nearest:
+                screen(white, caret)
+            else:
+                screen(black, caret)
+
+        screen(selc, text.selection(min(click, nearest), max(click, nearest)))
+
+    elif name == 'motion':
+        pos = arguments[0]
+        box.size = pos - box.base
+        box.size.x = clamp(50, 100, box.size.x)
+        box.size.y = clamp(50, 100, box.size.y)
+        mousepos = pos
+        if 1 in arguments[2]:
+            clickpos = pos
+    elif name == 'buttondown':
+        pos = arguments[0]
+        clickpos = pos
+    else:
+        print name, arguments
+
+if __name__ == "__main__":
+    ui.eventloop(emit=event)
+
+# UI starts the eventloop, and I'm not proud about it.
+# unfortunately python did not have standard event loop implementation.
+# this is the price for ignorance of events.
+# Also, SDL allows only one window
+# so there's no point with window abstraction.
