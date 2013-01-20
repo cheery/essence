@@ -78,7 +78,8 @@ class Label(Surface):
         index = clamp(0, len(self.offsets) - 1, index)
         base = self.geometry.base
         size = self.geometry.size
-        return rectangle(base + vec2(self.offsets[index]-1, -1), vec2(1, size.y+1))
+        y = max(size.y, 8)
+        return rectangle(base + vec2(self.offsets[index]-1, -1), vec2(1, y+1))
 
     def selection(self, head, tail):
         head = clamp(0, len(self.offsets) - 1, head)

@@ -8,63 +8,263 @@ parser.add_argument('filename', nargs='?')
 args = parser.parse_args()
 
 from essence2 import vec2, rgba, rectangle, clamp
+from essence2 import graphics
+from essence2.fields import ListField, TextField, Selection
 from essence2 import ui
+from essence2 import grammar
+import sys
+
+grammar_language = grammar.Language([
+    grammar.Symbolic('rule', ('name', 'name*')),
+    grammar.Symbolic('group', ('name', 'name*')),
+    grammar.Symbolic('data', ('name', 'type')),
+    grammar.Data('data', 'text'),
+    grammar.Data('name', 'text'),
+], root='rule')
+
+language = grammar.Language([
+    grammar.Group('statement', ('call', 'def')),
+    grammar.Group('expression', ('var', 'call', 'number')),
+    grammar.Symbolic('call', ('expression', 'expression*')),
+    grammar.Symbolic('def', ('var', 'var*', 'statement*')),
+    grammar.Data('var', 'text'),
+    grammar.Data('number', 'text'),
+], root='statement*')
+
+print language.text()
+
 
 red = rgba(255, 0, 0)
+green = rgba(80, 255, 80)
+blue = rgba(0, 0, 255)
 black = rgba(0, 0, 0)
 white = rgba(255, 255, 255)
-
-selc = ui.blend_sub(rgba(50, 50, 0, 50))
-
+gray = rgba(0x70, 0x70, 0x70)
+selc = graphics.blend_sub(rgba(80, 80, 0, 50))
 background_color = rgba(0x20, 0x30, 0x40)
-border = ui.Patch9.load('assets/border.png')
-box = rectangle(vec2(100, 100), vec2(100, 100))
+border = graphics.Patch9.load('assets/border.png')
+font = graphics.Font.load('font/proggy_tiny')
 
-clickpos = vec2(0, 0)
-mousepos = vec2(0, 0)
+root = ListField([
+    ListField([
+        TextField("test", name='var'),
+        ListField([], name='var*'),
+        ListField([], name='statement*'),
+    ], name='def'),
+    ListField([
+        TextField("test", name='var'),
+        ListField([], name='expression*'),
+    ], name='call'),
+], name="statement*")
 
-font = ui.Font.load('font/proggy_tiny')
+def visualize(field, visualizer):
+    res = visualizer(field)
+    res.field = field
+    return res
 
-text = font("Hello world and lollers!")(ui.blend_mult(red))
-text.geometry.base += vec2(150, 300)
+def visualize_list(fields, visualizer, separator=None, header=None, footer=None, stub=None):
+    res = []
+    if header:
+        res.append(header)
+    slot = 0
+    for slot, field in enumerate(fields):
+        if slot != 0 and separator:
+            res.append(separator.dup())
+        out = visualize(field, visualizer)
+        out.slot = slot
+        res.append(out)
+    if slot == 0 and stub:
+        res.append(stub)
+    if footer:
+        res.append(footer)
+    return res
+
+def coffeesipper_view(field):
+    if field.name == 'statement*':
+        passer = ui.Label('pass')
+        passer.blend = graphics.blend_mult(green)
+        out = ui.List(visualize_list(field, coffeesipper_view,
+            stub=passer,
+        ))
+        for child in out.children:
+            child.align = 0.0, 0.5
+        out.extend = 1
+    elif field.name == 'call':
+        passer = ui.Label('call')
+        passer.blend = graphics.blend_mult(green)
+        out = ui.List(visualize_list(field, coffeesipper_view,
+            header=passer,
+        ))
+        out.extend = 1
+        for index, child in enumerate(out.children):
+            if index > 0:
+                child.extend = 1
+                child.align = 0.1, 0.5
+            else:
+                child.align = 0.0, 0.5
+    elif field.name == 'var*':
+        out = ui.List(visualize_list(field, coffeesipper_view,
+            separator = ui.Label(','),
+            header = ui.Label('('),
+            footer = ui.Label(')'),
+        ))
+    elif field.name == 'expression*':
+        out = ui.List(visualize_list(field, coffeesipper_view,
+            separator = ui.Label(','),
+            header = ui.Label('('),
+            footer = ui.Label(')'),
+        ))
+    elif field.name == 'def' and len(field) == 3:
+        name, args, body = visualize_list(field, coffeesipper_view)
+        ident = ui.Label('def')
+        ident.blend = graphics.blend_mult(green)
+        ident.align = 0.0, 0.0
+        name.align = 0.05, 0.0
+        args.align = 0.05, 0.0
+        body.align = 0.05, 0.0
+        out = ui.List([ident, name, args, body])
+        out.extend = 1
+        out.align = 0.0, 0.5
+    elif field.name == 'var':
+        out = ui.Label()
+        out.blend = graphics.blend_mult(gray)
+    elif isinstance(field, ListField):
+        out = ui.List(visualize_list(field, coffeesipper_view,
+            header = ui.Label("%s" % field.name)
+        ))
+        out.background = border
+    elif isinstance(field, TextField):
+        out = ui.Label()
+        out.background = border
+    return out
+
+def build_view(field):
+    return visualize(field, coffeesipper_view)
+#    if isinstance(field, TextField):
+#        out = ui.Label(field)
+#        out.align = 0.0, 0.5
+#        out.extend = 1
+#        return out
+#    assert isinstance(field, ListField)
+#    children = []
+#    children.append(ui.Label("*** %s ***" % field.name))
+#    for index, subfield in enumerate(field):
+#        if index != 0:
+#            children.append(ui.Label("--- ---"))
+#        subview = build_view(subfield)
+#        subview.slot = index
+#        children.append(subview)
+#    children.append(ui.Label("*** ***"))
+#    out = ui.List(children, field)
+#    out.background = border
+#    out.padding = 10, 10, 5, 5
+#    out.spacing = 3
+#    out.extend = 1
+#    return out
+
+def traverse(current):
+    yield current
+    if isinstance(current, ui.List):
+        for subview in current.children:
+            for descview in traverse(subview):
+                yield descview
+
+def draw_selection(screen, view, selection):
+    if view.field == selection.field:
+        screen(selc, view.selection(selection.start, selection.stop))
+        screen(white, view.caret(selection.head))
+        return True
+    if isinstance(view, ui.List):
+        for subview in view.children:
+            if draw_selection(screen, subview, selection):
+                return True
+    else:
+        return False
+
+selection = Selection(root, 0, len(root))
+selection.drag = False
+view = None
+
+def on_frame(screen):
+    global view
+    screen(background_color)
+    view = build_view(root)
+    size, extend = view.layout0(font)
+    view.layout1(rectangle(vec2(0, 0), size.maximum(screen.size)))
+    view.draw(screen)
+    draw_selection(screen, view, selection)
+
+def on_resize(width, height):
+    pass
+
+def on_keydown(key, mod, text):
+    shift = 'shift' in mod
+    if key == 'left':
+        selection.move(selection.head-1, shift)
+    elif key == 'right':
+        selection.move(selection.head+1, shift)
+    elif key == 'delete' or key == 'backspace':
+        if selection.head == selection.tail:
+            i = {'delete':+1, 'backspace':-1}[key]
+            selection.move(selection.head+i, True)
+        selection.replace('')
+    elif key == 'home':
+        selection.move(0, shift)
+    elif key == 'end':
+        selection.move(len(selection.field), shift)
+    elif key == 'escape':
+        sys.exit(0)
+    elif key == 'l' and isinstance(selection.field, ListField):
+        selection.replace([ListField([], name="list")])
+    elif key == 'r' and isinstance(selection.field, ListField):
+        selection.replace([ListField([], name="row")])
+    elif key == 't' and isinstance(selection.field, ListField):
+        selection.replace([TextField('add text here')])
+    elif len(text) > 0:
+        if isinstance(selection.field, TextField):
+            selection.replace(text)
+    else:
+        print key, mod, text
+
+def on_keyup(key, mod):
+    pass
+
+def pick(view, position):
+    match = None
+    for descview in traverse(view):
+        if isinstance(descview.field, (TextField, ListField)) and descview.outer.inside(position):
+            match = descview
+    return match
+
+def on_motion(position, velocity, buttons):
+    if buttons[0] == 1 and selection.drag:
+        nearest = selection.drag.nearest_caret(position)
+        selection.move(nearest, True)
+#
+def on_buttondown(position, button):
+    if button == 1:
+        element = pick(view, position)
+        if element:
+            nearest = element.nearest_caret(position)
+            selection.field = element.field
+            selection.move(nearest, False)
+            selection.drag = element
+
+def on_quit():
+    pass
 
 def event(name, arguments):
-    global mousepos, clickpos
-    if name == 'frame':
-        screen = arguments[0]
-        screen(background_color)
-        screen(border, box)
-        screen(text)
-
-        click = text.nearest_caret(clickpos)
-        nearest = text.nearest_caret(mousepos)
-        for index, caret in enumerate(text.carets()):
-            if index == nearest:
-                screen(white, caret)
-            else:
-                screen(black, caret)
-
-        screen(selc, text.selection(min(click, nearest), max(click, nearest)))
-
-    elif name == 'motion':
-        pos = arguments[0]
-        box.size = pos - box.base
-        box.size.x = clamp(50, 100, box.size.x)
-        box.size.y = clamp(50, 100, box.size.y)
-        mousepos = pos
-        if 1 in arguments[2]:
-            clickpos = pos
-    elif name == 'buttondown':
-        pos = arguments[0]
-        clickpos = pos
+    name = 'on_' + name
+    g = globals()
+    if name in g:
+        g[name](*arguments)
     else:
         print name, arguments
 
-if __name__ == "__main__":
-    ui.eventloop(emit=event)
-
-# UI starts the eventloop, and I'm not proud about it.
+# SDL starts the eventloop, and I'm not proud about it.
 # unfortunately python did not have standard event loop implementation.
 # this is the price for ignorance of events.
 # Also, SDL allows only one window
 # so there's no point with window abstraction.
+if __name__ == "__main__":
+    graphics.eventloop(emit=event)

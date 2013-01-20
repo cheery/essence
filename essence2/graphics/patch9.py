@@ -1,4 +1,4 @@
-from essence2.ui.surface import Surface
+from surface import Surface
 
 def borders(surface):
     width, height = surface.size

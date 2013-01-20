@@ -15,6 +15,18 @@ class vec2(object):
     def __sub__(self, (x,y)):
         return vec2(self.x - x, self.y - y)
 
+    def maximum(self, (x,y)):
+        return vec2(max(self.x, x), max(self.y, y))
+
+    def minimum(self, (x,y)):
+        return vec2(min(self.x, x), min(self.y, y))
+
+    def mix(self, (x,y), mask):
+        return vec2(
+            self.x if mask & 1 else x,
+            self.y if mask & 2 else y
+        )
+
 class rgba(object):
     def __init__(self, r, g, b, a=255):
         self.r = r
@@ -42,6 +54,28 @@ class rectangle(object):
     def valid(self):
         x, y = self.size
         return x >= 0 and y >= 0
+
+    def offset(self, (left, top, right, bottom)):
+        return rectangle(
+            self.base - (left, top),
+            self.size + (left+right, top+bottom)
+        )
+
+    def inset(self, (left, top, right, bottom)):
+        return rectangle(
+            self.base + (left, top),
+            self.size - (left+right, top+bottom)
+        )
+
+    def inside(self, pos):
+        x, y = pos - self.base
+        w, h = self.size
+        return 0 <= x < w and 0 <= y < h
+
+    def move_inside(self, space, x=0.5, y=0.5):
+        excess = space.size - self.size
+        self.base = space.base + vec2(excess.x * x, excess.y * y)
+        return self
 
 def clamp(low, high, value):
     if value <= low:
