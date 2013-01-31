@@ -1,3 +1,5 @@
+import math
+
 class vec2(object):
     def __init__(self, x, y):
         self.x = x
@@ -14,6 +16,23 @@ class vec2(object):
 
     def __sub__(self, (x,y)):
         return vec2(self.x - x, self.y - y)
+
+    def __mul__(self, i):
+        return vec2(self.x * i, self.y * i)
+
+    @property
+    def magnitude(self):
+        return math.sqrt(self.x*self.x + self.y*self.y)
+
+    @property
+    def normal(self):
+        mag = self.magnitude
+        if mag > 0.0:
+            return vec2(self.x / mag, self.y / mag)
+        return None
+
+    def dot(self, other):
+        return self.x*other.x + self.y*other.y
 
     def maximum(self, (x,y)):
         return vec2(max(self.x, x), max(self.y, y))

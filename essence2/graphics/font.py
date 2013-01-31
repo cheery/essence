@@ -98,6 +98,6 @@ class Label(Surface):
         for index, offset in enumerate(self.offsets):
             d1 = abs(delta.x - offset)
             if d0 < d1:
-                return index - 1
+                return index - 1, d0
             d0 = d1
-        return index
+        return index, d0

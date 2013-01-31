@@ -40,9 +40,11 @@ blue = rgba(0, 0, 255)
 black = rgba(0, 0, 0)
 white = rgba(255, 255, 255)
 gray = rgba(0x70, 0x70, 0x70)
+yellow = rgba(255, 255, 0)
 selc = graphics.blend_sub(rgba(80, 80, 0, 50))
 background_color = rgba(0x20, 0x30, 0x40)
 border = graphics.Patch9.load('assets/border.png')
+marker = graphics.Patch9.load('assets/box.marker.png')
 font = graphics.Font.load('font/proggy_tiny')
 
 root = ListField([
@@ -53,13 +55,15 @@ root = ListField([
     ], name='def'),
     ListField([
         TextField("test", name='var'),
-        ListField([], name='expression*'),
+        ListField([
+            TextField("hello world", name='string'),
+        ], name='expression*'),
     ], name='call'),
 ], name="statement*")
 
 def visualize(field, visualizer):
     res = visualizer(field)
-    res.field = field
+    res.target = field
     return res
 
 def visualize_list(fields, visualizer, separator=None, header=None, footer=None, stub=None):
@@ -71,7 +75,7 @@ def visualize_list(fields, visualizer, separator=None, header=None, footer=None,
         if slot != 0 and separator:
             res.append(separator.dup())
         out = visualize(field, visualizer)
-        out.slot = slot
+        out.segment = (fields, slot)
         res.append(out)
     if slot == 0 and stub:
         res.append(stub)
@@ -80,61 +84,98 @@ def visualize_list(fields, visualizer, separator=None, header=None, footer=None,
     return res
 
 def coffeesipper_view(field):
+    if False:
+        pass
+#    elif isinstance(field, TextField):
+#        out = ui.Label(font, field)
+
     if field.name == 'statement*':
-        passer = ui.Label('pass')
-        passer.blend = graphics.blend_mult(green)
-        out = ui.List(visualize_list(field, coffeesipper_view,
+        passer = ui.Label(font, 'pass')
+        passer.postprocess = graphics.blend_mult(green)
+        out = ui.Column(visualize_list(field, coffeesipper_view,
             stub=passer,
         ))
-        for child in out.children:
-            child.align = 0.0, 0.5
-        out.extend = 1
+        out = ui.Pad((10, 0, 0, 0), out)
+        out.placement = 'y'
+#        for child in out.children:
+#            child.align = 0.0, 0.5
+#        out.extend = 1
     elif field.name == 'call':
-        passer = ui.Label('call')
-        passer.blend = graphics.blend_mult(green)
-        out = ui.List(visualize_list(field, coffeesipper_view,
-            header=passer,
-        ))
-        out.extend = 1
-        for index, child in enumerate(out.children):
-            if index > 0:
-                child.extend = 1
-                child.align = 0.1, 0.5
-            else:
-                child.align = 0.0, 0.5
+        out = ui.Row(visualize_list(field, coffeesipper_view))
+#        passer = ui.Label('call')
+#        passer.blend = graphics.blend_mult(green)
+#        out = ui.List(visualize_list(field, coffeesipper_view,
+#            header=passer,
+#        ))
+#        out.extend = 1
+#        for index, child in enumerate(out.children):
+#            if index > 0:
+#                child.extend = 1
+#                child.align = 0.1, 0.5
+#            else:
+#                child.align = 0.0, 0.5
     elif field.name == 'var*':
-        out = ui.List(visualize_list(field, coffeesipper_view,
-            separator = ui.Label(','),
-            header = ui.Label('('),
-            footer = ui.Label(')'),
+        out = ui.Row(visualize_list(field, coffeesipper_view,
+            separator = ui.Label(font, ','),
+            header = ui.Label(font, '('),
+            footer = ui.Label(font, ')'),
         ))
     elif field.name == 'expression*':
-        out = ui.List(visualize_list(field, coffeesipper_view,
-            separator = ui.Label(','),
-            header = ui.Label('('),
-            footer = ui.Label(')'),
+        out = ui.Row(visualize_list(field, coffeesipper_view,
+            separator = ui.Row([ui.Label(font, ','), ui.Spacer(vec2(8, 8))]),
+            header = ui.Label(font, '('),
+            footer = ui.Label(font, ')'),
         ))
     elif field.name == 'def' and len(field) == 3:
         name, args, body = visualize_list(field, coffeesipper_view)
-        ident = ui.Label('def')
+        ident = ui.Label(font, 'def')
         ident.blend = graphics.blend_mult(green)
-        ident.align = 0.0, 0.0
-        name.align = 0.05, 0.0
-        args.align = 0.05, 0.0
-        body.align = 0.05, 0.0
-        out = ui.List([ident, name, args, body])
-        out.extend = 1
-        out.align = 0.0, 0.5
-    elif field.name == 'var':
-        out = ui.Label()
-        out.blend = graphics.blend_mult(gray)
+
+        top = ui.Row([ident, ui.Spacer(vec2(8, 8)), name, args])
+        out = ui.Column([
+            top,
+            body,
+        ])
+
+#        ident.align = 0.0, 0.0
+#        name.align = 0.05, 0.0
+#        args.align = 0.05, 0.0
+#        body.align = 0.05, 0.0
+#        out = ui.List([ident, name, args, body])
+#        out.extend = 1
+#        out.align = 0.0, 0.5
     elif isinstance(field, ListField):
-        out = ui.List(visualize_list(field, coffeesipper_view,
-            header = ui.Label("%s" % field.name)
-        ))
-        out.background = border
+        header = ui.Label(font, field.name)
+        header.postprocess = graphics.blend_mult(green)
+        stub = ui.Label(font, "empty")
+        stub.postprocess = graphics.blend_mult(gray)
+        out = ui.Column([
+                header,
+                ui.Pad((10, 0, 0, 0),
+                    ui.Column(visualize_list(field, coffeesipper_view,
+                        stub=stub,
+                    ))
+                ),
+            ],
+        )
+    elif field.name == 'string':
+        deco = ui.Label(font, '"')
+        deco.postprocess = graphics.blend_mult(yellow)
+        out = ui.Label(font, field, segment=(field,0))
+        out.postprocess = graphics.blend_mult(yellow)
+        out = ui.Row([deco, out, deco.dup()])
+        out.placement = 'text+'
+
+    elif field.name == 'var':
+        out = ui.Label(font, field)
+        #out.postprocess = graphics.blend_mult(yellow)
+#    elif isinstance(field, ListField):
+#        out = ui.List(visualize_list(field, coffeesipper_view,
+#            header = ui.Label("%s" % field.name)
+#        ))
+#        out.background = border
     elif isinstance(field, TextField):
-        out = ui.Label()
+        out = ui.Label(font, field)
         out.background = border
     return out
 
@@ -170,29 +211,189 @@ def traverse(current):
                 yield descview
 
 def draw_selection(screen, view, selection):
-    if view.field == selection.field:
-        screen(selc, view.selection(selection.start, selection.stop))
-        screen(white, view.caret(selection.head))
-        return True
-    if isinstance(view, ui.List):
-        for subview in view.children:
-            if draw_selection(screen, subview, selection):
-                return True
-    else:
-        return False
+    floor = ui.find_target(view, selection.field)
+    around = floor.geometry.offset((8,8,8,8))
+    screen(marker, around)
+
+    if floor.placement == 'x':
+        for element in ui.find_segments(floor, selection.field):
+            s = ui.seg_selection_x(element, selection.start, selection.stop)
+            if s:
+                screen(selc, s)
+    elif floor.placement == 'y':
+        for element in ui.find_segments(floor, selection.field):
+            s = ui.seg_selection_y(element, selection.start, selection.stop)
+            if s:
+                screen(selc, s)
+    elif floor.placement == 'text':
+        s = floor.selection(selection.start, selection.stop)
+        if s:
+            screen(selc, s)
+    elif floor.placement == 'text+':
+        start = selection.start
+        stop = selection.stop
+        for element in ui.find_segments(floor, selection.field):
+            if isinstance(element, ui.Label):
+                _, base = element.segment
+                ln = len(element.source)
+                if start <= base + ln and stop >= base:
+                    _start = clamp(base, base+ln, start)
+                    _stop = clamp(base, base+ln, stop)
+                    s = element.selection(_start, _stop)
+                    if s:
+                        screen(selc, s)
+            else:
+                s = ui.seg_selection_x(element, selection.start, selection.stop)
+                if s:
+                    screen(selc, s)
+
+#    if view.field == selection.field:
+#        screen(selc, view.selection(selection.start, selection.stop))
+#        screen(white, view.caret(selection.head))
+#        return True
+#    if isinstance(view, ui.List):
+#        for subview in view.children:
+#            if draw_selection(screen, subview, selection):
+#                return True
+#    else:
+#        return False
 
 selection = Selection(root, 0, len(root))
 selection.drag = False
 view = None
 
+default0 = dict(
+    font = font,
+    background = border,
+#    inner_background = border,
+    align_by = ui.center,
+    padding = (20, 20, 20, 20),
+    expand = 'both',
+)
+default1 = dict(
+    font = font,
+    min_size = vec2(8, 8),
+    expand = 'both',
+)
+default2 = dict(
+    font = font,
+    postprocess = graphics.blend_mult(gray),
+)
+
+import time, math
+
 def on_frame(screen):
     global view
     screen(background_color)
-    view = build_view(root)
-    size, extend = view.layout0(font)
-    view.layout1(rectangle(vec2(0, 0), size.maximum(screen.size)))
+    width, height = screen.size
+
+    now = time.time()
+    left = math.cos(now) * 100 + 100
+    top  = math.sin(now) * 100 + 100
+    right  = math.cos(now*2) * 100 + width  - 100
+    bottom = math.sin(now*2) * 100 + height - 100
+
+
+    layout = ui.Layout()
+    #solver.autosolve = True
+    view = ui.Root(default0,
+        ui.Column(default0, [
+            ui.Row(default0, [
+                ui.Label(default1, "user"),
+                ui.Label(default2, " = "),
+                ui.Label(default1, "superman"),
+                ui.Label(default2, ";"),
+            ]),
+            ui.Padding(default0,
+                ui.Row(default0, [
+                    ui.Label(default1, "author"),
+                    ui.Space(default1),
+                    ui.Label(default2, "is"),
+                    ui.Space(default1),
+                    ui.Label(default2, "exceedingly"),
+                    ui.Space(default1),
+                    ui.Label(default1, "magnificent"),
+                ])
+            )
+        ])
+    )
+    view.constrain(
+        view.outer.left == left,
+        view.outer.top  == top,
+        (view.outer.right >= right),
+        (view.outer.bottom >= bottom),
+    )
+    view.feed(layout)
     view.draw(screen)
-    draw_selection(screen, view, selection)
+#    a = ui.ConstraintVariable('a')
+#    b = ui.ConstraintVariable('b')
+#    c = ui.ConstraintVariable('c')
+#    d = ui.ConstraintVariable('d')
+#    e = ui.ConstraintVariable('e')
+#    f = ui.ConstraintVariable('f')
+#    right = ui.ConstraintVariable('right')
+#    variables = a,b,c,d,e,f, right
+#
+#    for var in variables:
+#        solver.add_constraint(0 <= var)
+#        solver.add_constraint((var <= screen.size.x) | ui.strong)
+#
+#    rules = [
+#        a + 20 <= b,
+#        b + 20 <= c,
+#        c + 20 <= d,
+#        d + 20 <= e,
+#        e + 20 <= f,
+#        f <= right,
+#        (right == screen.size.x - 10) | ui.strong,
+#
+#        (c == 0) | ui.weak,
+#        (d == right) | ui.weak,
+#
+#        (e == 0) | ui.weak,
+#        (f == right) | ui.weak,
+#    ]
+#
+#    for rule in rules:
+#        solver.add_constraint(rule)
+#
+#
+#    for i, var in enumerate(variables):
+#        s = font(var.name)
+#        s.geometry.base = vec2(var.value, 100 + 10 * i)
+#        screen(black, rectangle(vec2(var.value, 10), vec2(1, 180)))
+#        screen(s)
+
+#
+#    size = screen.size
+#
+#    solver.add_constraint(0 <= view.x0)
+#    solver.add_constraint(0 <= view.y0)
+#    solver.add_constraint((view.x3 <= size.y) | ui.strong)
+#    solver.add_constraint((view.y3 <= size.y) | ui.strong)
+#
+#    solver.add_constraint((view.x0 == 0) | ui.strong)
+#    solver.add_constraint((
+#        (view.y0 + view.y3) / 2 == size.y / 2
+#    ) | ui.strong)
+#
+#    view.draw(screen)
+
+
+    #view = build_view(root)
+#    view = ui.Column([
+#        ui.Row([
+#            ui.Label(font, "jello"),
+#            ui.Spacer(vec2(10, 0)),
+#            ui.Label(font, "such a Nice"),
+#        ]),
+#        ui.Spacer(vec2(0, 3)),
+#        ui.Label(font, "world"),
+#    ])
+#    size, extend = view.layout0()
+#    view.layout1(rectangle(vec2(0, 0), size.maximum(screen.size)))
+#    view.draw(screen)
+#    draw_selection(screen, view, selection)
 
 def on_resize(width, height):
     pass
@@ -238,15 +439,35 @@ def pick(view, position):
 
 def on_motion(position, velocity, buttons):
     if buttons[0] == 1 and selection.drag:
-        nearest = selection.drag.nearest_caret(position)
+        nearest = nearest_caret(selection.drag, position)
         selection.move(nearest, True)
 #
+
+def nearest_caret(element, position):
+    if element.placement == 'x':
+        nearest, d = ui.segs_nearest_caret_x(
+            ui.find_segments(element, element.target),
+            position
+        )
+    elif element.placement == 'y':
+        nearest, d = ui.segs_nearest_caret_y(
+            ui.find_segments(element, element.target),
+            position
+        )
+    elif element.placement == 'text':
+        nearest, d = element.nearest_caret(position)
+    else:
+        nearest = 0
+    return nearest
+
 def on_buttondown(position, button):
     if button == 1:
-        element = pick(view, position)
+        element = None
+        for element in ui.pick(view, position):
+            pass
         if element:
-            nearest = element.nearest_caret(position)
-            selection.field = element.field
+            nearest = nearest_caret(element, position)
+            selection.field = element.target
             selection.move(nearest, False)
             selection.drag = element
 
