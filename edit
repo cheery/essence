@@ -53,12 +53,26 @@ root = ListField([
         ListField([], name='var*'),
         ListField([], name='statement*'),
     ], name='def'),
+    None,
     ListField([
         TextField("test", name='var'),
         ListField([
             TextField("hello world", name='string'),
         ], name='expression*'),
     ], name='call'),
+    ListField([
+        TextField('inv_mat', name='var'),
+        ListField([
+            ListField([
+                ListField([
+                    TextField('i', name='var'),
+                    TextField('j', name='var'),
+                ], name='add'),
+                TextField('k', name='var'),
+            ], name='multiply'),
+            TextField('det', name='var'),
+        ], name='divide'),
+    ], name='multiply'),
 ], name="statement*")
 
 def visualize(field, visualizer):
@@ -77,11 +91,182 @@ def visualize_list(fields, visualizer, separator=None, header=None, footer=None,
         out = visualize(field, visualizer)
         out.segment = (fields, slot)
         res.append(out)
-    if slot == 0 and stub:
+    if len(fields) == 0 and stub:
         res.append(stub)
     if footer:
         res.append(footer)
     return res
+
+def many(fields, separator=None, header=None, footer=None, stub=None):
+    return visualize_list(fields, build_layout, separator, header, footer, stub)
+
+variable_field = dict(
+    font = font,
+    postprocess = graphics.blend_mult(rgba(192, 192, 192)),
+)
+
+string_field = dict(
+    font = font,
+    postprocess = graphics.blend_mult(rgba(192, 192, 0)),
+)
+
+syntax_field = dict(
+    font = font,
+)
+
+spacer = dict(
+    min_size = vec2(8, 8),
+)
+
+math_field = dict(
+    align_by = ui.mathline,
+)
+
+div_box = dict(
+    align_by = ui.mathline,
+    compress = 'horizontal',
+)
+
+div_spacer = dict(
+    min_size = vec2(20, 1),
+    background = rgba(255, 255, 255),
+    expand = 'horizontal',
+)
+
+unknown_element_name = dict(
+    font = font,
+    postprocess = graphics.blend_mult(rgba(255, 0, 0)),
+)
+unknown_element_list = dict(
+)
+
+unknown_element_border = dict(
+    background = border,
+    padding = (4, 4, 4, 4),
+)
+unknown_element_text = dict(
+    font = font,
+)
+unknown_element_none = dict(
+    font = font,
+    postprocess = graphics.blend_mult(rgba(255, 128, 0)),
+)
+
+empty_slot = dict(
+    font = font,
+    postprocess = graphics.blend_mult(rgba(128, 128, 128)),
+)
+
+binop_fields = {
+    'add':      ('+', 10),
+    'sub':      ('-', 10),
+    'multiply': ('*', 20),
+    'divide':   ('/', 20),
+}
+
+def valid_binop(field):
+    if isinstance(field, ListField) and field.name in binop_fields and len(field) == 2:
+        return True
+
+def build_layout(field):
+    if False:
+        pass
+    elif field == None:
+        out = ui.Label(syntax_field, "none")
+    elif valid_binop(field):
+        left, right = field
+
+        sym, prec = binop_fields[field.name]
+
+        leftside = build_layout(left)
+        rightside = build_layout(right)
+        if field.name == 'divide':
+            out = ui.Column(div_box, [leftside, ui.Space(div_spacer), rightside])
+        else:
+            if valid_binop(left) and prec > binop_fields[left.name][1]:
+                leftside = ui.Row(math_field, [
+                    ui.Label(syntax_field, '('),
+                    leftside,
+                    ui.Label(syntax_field, ')'),
+                ])
+            if valid_binop(right) and prec > binop_fields[right.name][1]:
+                rightside = ui.Row(math_field, [
+                    ui.Label(syntax_field, '('),
+                    rightside,
+                    ui.Label(syntax_field, ')'),
+                ])
+
+            if field.name == 'multiply' and valid_binop(right) and right.name == 'divide':
+                out = ui.Row(math_field, [leftside, rightside])
+            else:
+                out = ui.Row(math_field, [
+                    leftside,
+                    ui.Space(spacer), ui.Label(syntax_field, sym), ui.Space(spacer),
+                    rightside,
+                ])
+    elif field.name == 'def' and len(field) == 3:
+        name, arguments, body = field
+
+        if isinstance(arguments, ListField) and arguments.name == 'var*':
+            arglist = ui.Row({}, many(arguments, header=ui.Label(syntax_field, '('), footer=ui.Label(syntax_field, ')'), separator=ui.Label(syntax_field, ',')))
+        else:
+            arglist = build_layout(arguments)
+
+        if isinstance(body, ListField) and body.name == 'statement*':
+            bodylist = ui.Column({}, many(body, stub=ui.Label(syntax_field, 'pass')))
+        else:
+            bodylist = build_layout(body)
+
+        out = ui.Column({'align_by':ui.left}, [
+            ui.Row({}, [
+                ui.Label(syntax_field, "def"),
+                ui.Space(spacer),
+                build_layout(name),
+                arglist,
+            ]),
+            ui.Padding({'padding':(20, 0, 0, 0), 'expand':'horizontal'}, bodylist),
+        ])
+    elif field.name == 'call' and len(field) == 2:
+        callee, arguments = field
+
+        if isinstance(arguments, ListField) and arguments.name == 'expression*':
+            arglist = ui.Row({}, many(arguments, header=ui.Label(syntax_field, '('), footer=ui.Label(syntax_field, ')'), separator=ui.Label(syntax_field, ',')))
+        else:
+            arglist = build_layout(arguments)
+
+        out = ui.Row({}, [
+            build_layout(callee),
+            arglist,
+        ])
+    elif field.name == 'statement*':
+        out = ui.Column({}, many(field, stub=ui.Label(syntax_field, "empty statement list")))
+    elif isinstance(field, ListField):
+        out = ui.Row(unknown_element_list, [
+            ui.Padding(unknown_element_border, 
+                ui.Column(unknown_element_list, many(field, stub=ui.Label(empty_slot, "empty"))),
+            ),
+            ui.Label(unknown_element_name, ":%s" % field.name),
+        ])
+        pass
+    elif field.name == 'string':
+        out = ui.Row({}, [
+            ui.Label(string_field, '"'),
+            ui.Label(string_field, field),
+            ui.Label(string_field, '"'),
+        ])
+    elif field.name == 'var':
+        out = ui.Label(variable_field, field)
+    elif isinstance(field, TextField):
+        out = ui.Row(unknown_element_list, [
+            ui.Label(unknown_element_text, field),
+            ui.Label(unknown_element_name, ":%s" % field.name),
+        ])
+    else:
+        raise Exception('build_layout(%r)' % element)
+
+    return out
+
+
 
 def coffeesipper_view(field):
     if False:
@@ -288,35 +473,18 @@ def on_frame(screen):
     width, height = screen.size
 
     now = time.time()
-    left = math.cos(now) * 100 + 100
-    top  = math.sin(now) * 100 + 100
-    right  = math.cos(now*2) * 100 + width  - 100
-    bottom = math.sin(now*2) * 100 + height - 100
+    left = 10
+    top = 10
+    right = min(400, width - 20)
+    bottom = height - 20
 
+    root_config = dict(
+        align_by = ui.center,
+    )
 
     layout = ui.Layout()
     #solver.autosolve = True
-    view = ui.Root(default0,
-        ui.Column(default0, [
-            ui.Row(default0, [
-                ui.Label(default1, "user"),
-                ui.Label(default2, " = "),
-                ui.Label(default1, "superman"),
-                ui.Label(default2, ";"),
-            ]),
-            ui.Padding(default0,
-                ui.Row(default0, [
-                    ui.Label(default1, "author"),
-                    ui.Space(default1),
-                    ui.Label(default2, "is"),
-                    ui.Space(default1),
-                    ui.Label(default2, "exceedingly"),
-                    ui.Space(default1),
-                    ui.Label(default1, "magnificent"),
-                ])
-            )
-        ])
-    )
+    view = ui.Root(root_config, build_layout(root))
     view.constrain(
         view.outer.left == left,
         view.outer.top  == top,
@@ -325,6 +493,28 @@ def on_frame(screen):
     )
     view.feed(layout)
     view.draw(screen)
+    
+    #default0,
+    #    ui.Column(default0, [
+    #        ui.Row(default0, [
+    #            ui.Label(default1, "user"),
+    #            ui.Label(default2, " = "),
+    #            ui.Label(default1, "superman"),
+    #            ui.Label(default2, ";"),
+    #        ]),
+    #        ui.Padding(default0,
+    #            ui.Row(default0, [
+    #                ui.Label(default1, "author"),
+    #                ui.Space(default1),
+    #                ui.Label(default2, "is"),
+    #                ui.Space(default1),
+    #                ui.Label(default2, "exceedingly"),
+    #                ui.Space(default1),
+    #                ui.Label(default1, "magnificent"),
+    #            ])
+    #        )
+    #    ])
+    #)
 #    a = ui.ConstraintVariable('a')
 #    b = ui.ConstraintVariable('b')
 #    c = ui.ConstraintVariable('c')

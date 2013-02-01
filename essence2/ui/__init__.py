@@ -25,8 +25,8 @@ def variable(owner, which=None):
     var.init(owner, which)
     return var
 
-def expander(parent, owner, toplevel=None):
-    if parent is None:
+def expander(parent, owner, toplevel=None, compress=False):
+    if parent is None or compress:
         var = Expand(urandom(4).encode('hex'))
         var.init(owner, toplevel if toplevel != None else owner)
         return var
@@ -156,8 +156,9 @@ class Column(Container):
         inner = self.inner
         outer = self.outer
         align_by = self.config.get('align_by', baseline)
-        h_expand = expander(h_expand, self)
-        v_expand = expander(v_expand, self)
+        compress = self.config.get('compress', None)
+        h_expand = expander(h_expand, self, compress = compress in ('both', 'horizontal'))
+        v_expand = expander(v_expand, self, compress = compress in ('both', 'vertical'))
         last = None
         for element in self:
             element.feed(layout, h_expand, v_expand)
@@ -191,8 +192,9 @@ class Row(Container):
         inner = self.inner
         outer = self.outer
         align_by = self.config.get('align_by', baseline)
-        h_expand = expander(h_expand, self)
-        v_expand = expander(v_expand, self)
+        compress = self.config.get('compress', None)
+        h_expand = expander(h_expand, self, compress = compress in ('both', 'horizontal'))
+        v_expand = expander(v_expand, self, compress = compress in ('both', 'vertical'))
         last = None
         for element in self:
             element.feed(layout, h_expand, v_expand)
@@ -282,11 +284,14 @@ class Padding(object):
     def feed(self, layout, h_expand=None, v_expand=None):
         left, top, right, bottom = self.config.get('padding', (0,0,0,0))
         align_by = self.config.get('align_by', baseline)
+        compress = self.config.get('compress', None)
+        h_expand = expander(h_expand, self, compress = compress in ('both', 'horizontal'))
+        v_expand = expander(v_expand, self, compress = compress in ('both', 'vertical'))
         expandflags = self.config.get('expand', None)
         outer = self.outer
         element = self.element
-        h_expand = expander(h_expand, self)
-        v_expand = expander(v_expand, self)
+        #h_expand = expander(h_expand, self)
+        #v_expand = expander(v_expand, self)
 
         if expandflags in ('both', 'horizontal'):
             self.constrain(
@@ -438,7 +443,23 @@ def baseline(a, b, mode):
     if mode == 'vertical':
         return (a.outer.bottom == b.outer.bottom) | medium | 3.0
 
-#def mathline(left, right, mode):
+def left(a, b, mode):
+    if mode == 'column':
+        return a.outer.left == b.outer.left
+    if mode == 'horizontal':
+        return (a.outer.left == b.outer.left) | medium | 3.0
+    raise Exception("left(%r, %r, %r)" % (a,b,mode))
+
+
+def mathline(a, b, mode):
+    if mode == 'column':
+        return a.inner.left + a.inner.right  == b.inner.left + b.inner.right
+    if mode == 'row':
+        return a.inner.top  + a.inner.bottom == b.inner.top  + b.inner.bottom
+    if mode == 'horizontal':
+        return (a.outer.left + a.outer.right == b.outer.left + b.outer.right) | medium | 3.0
+    if mode == 'vertical':
+        return (a.outer.top + a.outer.bottom == b.outer.top + b.outer.bottom) | medium | 3.0
 #    if mode == 0:
 #        return [
 #            left.outer.b.x == right.outer.a.x,
