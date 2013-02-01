@@ -80,25 +80,25 @@ def visualize(field, visualizer):
     res.target = field
     return res
 
-def visualize_list(fields, visualizer, separator=None, header=None, footer=None, stub=None):
+def visualize_list(fields, parent, visualizer, separator=None, header=None, footer=None, stub=None, base=0):
     res = []
     if header:
         res.append(header)
-    slot = 0
     for slot, field in enumerate(fields):
         if slot != 0 and separator:
             res.append(separator.dup())
         out = visualize(field, visualizer)
-        out.segment = (fields, slot)
+        out.link = Link(parent, slot+base, field)
         res.append(out)
     if len(fields) == 0 and stub:
+        stub.link = Link(parent, base, None)
         res.append(stub)
     if footer:
         res.append(footer)
     return res
 
-def many(fields, separator=None, header=None, footer=None, stub=None):
-    return visualize_list(fields, build_layout, separator, header, footer, stub)
+def many(fields, parent, separator=None, header=None, footer=None, stub=None, base=0):
+    return visualize_list(fields, parent, build_layout, separator, header, footer, stub)
 
 variable_field = dict(
     font = font,
@@ -115,7 +115,7 @@ syntax_field = dict(
 )
 
 spacer = dict(
-    min_size = vec2(8, 8),
+    min_size = vec2(4, 4),
 )
 
 math_field = dict(
@@ -168,7 +168,21 @@ def valid_binop(field):
     if isinstance(field, ListField) and field.name in binop_fields and len(field) == 2:
         return True
 
-def build_layout(field):
+class Link(object):
+    def __init__(self, parent, base, field):
+        self.parent = parent
+        self.base = base
+        self.field = field
+
+    @property
+    def star(self):
+        return self.parent != None and self.parent.name.endswith('*')
+
+    @property
+    def dot(self):
+        return self.parent != None and self.field==None and not self.parent.name.endswith('*')
+
+def build_layout(field, parent=None, base=0):
     if False:
         pass
     elif field == None:
@@ -178,8 +192,8 @@ def build_layout(field):
 
         sym, prec = binop_fields[field.name]
 
-        leftside = build_layout(left)
-        rightside = build_layout(right)
+        leftside = build_layout(left, field, 0)
+        rightside = build_layout(right, field, 1)
         if field.name == 'divide':
             out = ui.Column(div_box, [leftside, ui.Space(div_spacer), rightside])
         else:
@@ -208,20 +222,20 @@ def build_layout(field):
         name, arguments, body = field
 
         if isinstance(arguments, ListField) and arguments.name == 'var*':
-            arglist = ui.Row({}, many(arguments, header=ui.Label(syntax_field, '('), footer=ui.Label(syntax_field, ')'), separator=ui.Label(syntax_field, ',')))
+            arglist = ui.Row({}, many(arguments, arguments, header=ui.Label(syntax_field, '('), footer=ui.Label(syntax_field, ')'), separator=ui.Label(syntax_field, ',')))
         else:
-            arglist = build_layout(arguments)
+            arglist = build_layout(arguments, field, 1)
 
         if isinstance(body, ListField) and body.name == 'statement*':
-            bodylist = ui.Column({}, many(body, stub=ui.Label(syntax_field, 'pass')))
+            bodylist = ui.Column({}, many(body, body, stub=ui.Label(syntax_field, 'pass')))
         else:
-            bodylist = build_layout(body)
+            bodylist = build_layout(body, field, 2)
 
         out = ui.Column({'align_by':ui.left}, [
             ui.Row({}, [
                 ui.Label(syntax_field, "def"),
                 ui.Space(spacer),
-                build_layout(name),
+                build_layout(name, field, 0),
                 arglist,
             ]),
             ui.Padding({'padding':(20, 0, 0, 0), 'expand':'horizontal'}, bodylist),
@@ -230,20 +244,20 @@ def build_layout(field):
         callee, arguments = field
 
         if isinstance(arguments, ListField) and arguments.name == 'expression*':
-            arglist = ui.Row({}, many(arguments, header=ui.Label(syntax_field, '('), footer=ui.Label(syntax_field, ')'), separator=ui.Label(syntax_field, ',')))
+            arglist = ui.Row({}, many(arguments, arguments, header=ui.Label(syntax_field, '('), footer=ui.Label(syntax_field, ')'), separator=ui.Label(syntax_field, ',')))
         else:
-            arglist = build_layout(arguments)
+            arglist = build_layout(arguments, field, 1)
 
         out = ui.Row({}, [
-            build_layout(callee),
+            build_layout(callee, field, 0),
             arglist,
         ])
     elif field.name == 'statement*':
-        out = ui.Column({}, many(field, stub=ui.Label(syntax_field, "empty statement list")))
+        out = ui.Column({}, many(field, field, stub=ui.Label(syntax_field, "empty statement list")))
     elif isinstance(field, ListField):
         out = ui.Row(unknown_element_list, [
             ui.Padding(unknown_element_border, 
-                ui.Column(unknown_element_list, many(field, stub=ui.Label(empty_slot, "empty"))),
+                ui.Column(unknown_element_list, many(field, field, stub=ui.Label(empty_slot, "empty"))),
             ),
             ui.Label(unknown_element_name, ":%s" % field.name),
         ])
@@ -263,7 +277,7 @@ def build_layout(field):
         ])
     else:
         raise Exception('build_layout(%r)' % element)
-
+    out.link = Link(parent, base, field)
     return out
 
 
@@ -443,8 +457,99 @@ def draw_selection(screen, view, selection):
 #    else:
 #        return False
 
+def clamp_inside(rc, pos):
+    lt = rc.base
+    rb = rc.base + rc.size
+    x = clamp(lt.x, rb.x, pos.x)
+    y = clamp(lt.y, rb.y, pos.y)
+    return vec2(x, y)
+
+def biased_distance(rc, pos, bias=None):
+    x, y = clamp_inside(rc, pos) - pos
+    distance = math.sqrt(x*x + y*y)
+    if bias == None:
+        return distance
+    if distance == 0.0:
+        return None
+    cosy = (x*bias.x + y*bias.y) / distance
+    if cosy < 0.5:
+        return None
+    return distance / cosy
+
+
+def recalibrate_eye():
+    for element, offset, caret in view.carets(lambda x: x.link != None and x.link.star):
+        field = element.link.parent
+        index = element.link.base + offset
+        if field == selection.field and selection.head == index:
+            selection.eye = clamp_inside(caret, selection.eye)
+
+    for element in view.query(lambda x: x.link != None and x.link.dot):
+        caret = element.outer.value
+        field = element.link.parent
+        index = element.link.base
+        if field == selection.field and selection.head == index:
+            selection.eye = clamp_inside(caret, selection.eye)
+
+    for label in view.query(lambda x: isinstance(x, ui.Label) and isinstance(x.source, TextField)):
+        field = label.source
+        for index, caret in enumerate(label.label_carets()):
+            if field == selection.field and selection.head == index:
+                selection.eye = clamp_inside(caret, selection.eye)
+
+def navigate(last_eye, bias, drag, sibling):
+    global selection
+    if drag:
+        sibling = True
+    best = None
+    res = None
+    for element, offset, caret in view.carets(lambda x: x.link != None and x.link.star):
+        field = element.link.parent
+        index = element.link.base + offset
+        if sibling and field != selection.field:
+            continue
+        d = biased_distance(caret, last_eye, bias)
+        if d == None:
+            continue
+        if best == None or d < best:
+            best = d
+            res = field, index, caret
+
+    for element in view.query(lambda x: x.link != None and x.link.dot):
+        caret = element.outer.value
+        field = element.link.parent
+        index = element.link.base
+        if sibling and field != selection.field:
+            continue
+        d = biased_distance(caret, last_eye, bias)
+        if d == None:
+            continue
+        if best == None or d < best:
+            best = d
+            res = field, index, caret
+
+    for label in view.query(lambda x: isinstance(x, ui.Label) and isinstance(x.source, TextField)):
+        field = label.source
+        if sibling and field != selection.field:
+            continue
+        for index, caret in enumerate(label.label_carets()):
+            d = biased_distance(caret, last_eye, bias)
+            if d == None:
+                continue
+            if best == None or d < best:
+                best = d
+                res = field, index, caret
+
+    if res:
+        last_field = selection.field
+        selection.field, index, caret = res
+        selection.move(index, drag)
+        selection.eye = clamp_inside(caret, last_eye)
+    return res
+
 selection = Selection(root, 0, len(root))
 selection.drag = False
+selection.eye = vec2(0, 0)
 view = None
 
 default0 = dict(
@@ -493,6 +598,35 @@ def on_frame(screen):
     )
     view.feed(layout)
     view.draw(screen)
+
+    g = view.selection(
+        lambda x: x.link != None and x.link.star and x.link.parent == selection.field,
+        lambda x: x.link.base,
+        selection.start,
+        selection.stop
+    )
+    for r in g:
+        screen(selc, r)
+
+    for label in view.query(lambda x: isinstance(x, ui.Label) and x.source == selection.field):
+        r = label.label_selection(selection.start, selection.stop)
+        if r:
+            screen(selc, r)
+
+    for element in view.query(lambda x: x.link != None and x.link.dot and x.link.parent == selection.field):
+        screen(selc, element.outer.value)
+
+
+    recalibrate_eye()
+
+#    for e, o, caret in view.carets(lambda x: x.link != None and x.link.star):
+#        screen(white, caret)
+
+
+#    for label in view.query(lambda x: isinstance(x, ui.Label) and isinstance(x.source, TextField)):
+#        for caret in label.label_carets():
+#            screen(white, caret)
+
     
     #default0,
     #    ui.Column(default0, [
@@ -590,10 +724,19 @@ def on_resize(width, height):
 
 def on_keydown(key, mod, text):
     shift = 'shift' in mod
-    if key == 'left':
-        selection.move(selection.head-1, shift)
+    ctrl = 'ctrl' in mod
+    if key == 'up':
+        navigate(selection.eye, vec2( 0,-1), shift, ctrl)
+    elif key == 'down':
+        navigate(selection.eye, vec2( 0,+1), shift, ctrl)
+    elif key == 'left':
+        navigate(selection.eye, vec2(-1, 0), shift, ctrl)
     elif key == 'right':
-        selection.move(selection.head+1, shift)
+        navigate(selection.eye, vec2(+1, 0), shift, ctrl)
+#    elif key == 'left':
+#        selection.move(selection.head-1, shift)
+#    elif key == 'right':
+#        selection.move(selection.head+1, shift)
     elif key == 'delete' or key == 'backspace':
         if selection.head == selection.tail:
             i = {'delete':+1, 'backspace':-1}[key]
@@ -606,9 +749,9 @@ def on_keydown(key, mod, text):
     elif key == 'escape':
         sys.exit(0)
     elif key == 'l' and isinstance(selection.field, ListField):
-        selection.replace([ListField([], name="list")])
+        selection.replace([ListField([], name="list*")])
     elif key == 'r' and isinstance(selection.field, ListField):
-        selection.replace([ListField([], name="row")])
+        selection.replace([ListField([], name="row*")])
     elif key == 't' and isinstance(selection.field, ListField):
         selection.replace([TextField('add text here')])
     elif len(text) > 0:

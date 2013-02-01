@@ -76,10 +76,61 @@ class Layout(object):
 #    except ExplainedCassowaryError, e:
 #        return e, (a,b)
 
+def _selection(inner, outer, direction, start, stop, base=0):
+    if start <= base + 1 and base <= stop:
+        start = clamp(0, 1, start - base)
+        stop  = clamp(0, 1, stop  - base)
+        if direction == 'x':
+            x0 = (inner.left.value, inner.right.value)[start]
+            x1 = (inner.left.value, inner.right.value)[stop]
+            y0 = outer.top.value
+            y1 = outer.bottom.value
+        else:
+            x0 = outer.left.value
+            x1 = outer.right.value
+            y0 = (inner.top.value, inner.bottom.value)[start]
+            y1 = (inner.top.value, inner.bottom.value)[stop]
+        return rectangle(vec2(x0,y0), vec2(x1-x0, y1-y0)).offset((1,1,1,1))
+
+def _carets(inner, outer, direction):
+    if direction == 'x':
+        x0 = inner.left.value
+        x1 = inner.right.value
+        y0 = outer.top.value
+        y1 = outer.bottom.value
+        yield rectangle(vec2(x0,y0), vec2(0,y1-y0)).offset((1,1,1,1))
+        yield rectangle(vec2(x1,y0), vec2(0,y1-y0)).offset((1,1,1,1))
+    else:
+        x0 = outer.left.value
+        x1 = outer.right.value
+        y0 = inner.top.value
+        y1 = inner.bottom.value
+        yield rectangle(vec2(x0,y0), vec2(x1-x0,0)).offset((1,1,1,1))
+        yield rectangle(vec2(x0,y1), vec2(x1-x0,0)).offset((1,1,1,1))
+
+class Singular(object):
+    direction = None
+    def query(self, valid):
+        if valid(self):
+            yield self
+
+    def selection(self, valid, basefn, start, stop, direction='y', outer=None):
+        if valid(self):
+            res = _selection(self.outer, outer or self.outer, direction, start, stop, basefn(self))
+            if res != None:
+                yield res
+
+    def carets(self, valid, direction='y', outer=None):
+        if valid(self):
+            for i, caret in enumerate(_carets(self.outer, outer or self.outer, direction)):
+                yield self, i, caret
+
 class Container(object):
-    def __init__(self, config, elements):
+    direction = None
+    def __init__(self, config, elements, link=None):
         self.config = config
         self.elements = elements
+        self.link = link
         self.inner = Box()
         self.outer = Box()
         self.constraints = [], ()
@@ -94,7 +145,7 @@ class Container(object):
         return iter(self.elements)
 
     def copy(self):
-        return self.__class__(self.config, [element.copy() for element in self])
+        return self.__class__(self.config, [element.copy() for element in self], self.link)
 
     def constrain(self, *rules):
         self.constraints[0].extend(rules)
@@ -109,10 +160,103 @@ class Container(object):
         for element in self:
             element.draw(screen)
 
-class Label(object):
-    def __init__(self, config, source):
+    def query(self, valid):
+        if valid(self):
+            yield self
+        for element in self:
+            for match in element.query(valid):
+                yield match
+
+    def selection(self, valid, basefn, start, stop, direction='y', outer=None):
+        if valid(self):
+            res = _selection(self.outer, outer or self.outer, direction, start, stop, basefn(self))
+            if res != None:
+                yield res
+        for element in self:
+            for res in element.selection(valid, basefn, start, stop, self.direction or direction, self.inner):
+                yield res
+
+    def carets(self, valid, direction='y', outer=None):
+        if valid(self):
+            for i, caret in enumerate(_carets(self.outer, outer or self.outer, direction)):
+                yield self, i, caret
+        for element in self:
+            for res in element.carets(valid, self.direction or direction, self.inner):
+                yield res
+
+class Composite(object):
+    direction = None
+    def query(self, valid):
+        if valid(self):
+            yield self
+        for element in self.element.query(valid):
+            yield element
+
+    def selection(self, valid, basefn, start, stop, direction='y', outer=None):
+        if valid(self):
+            res = _selection(self.outer, outer or self.outer, direction, start, stop, basefn(self))
+            if res != None:
+                yield res
+        for res in self.element.selection(valid, basefn, start, stop, self.direction or direction, self.inner):
+            yield res
+
+    def carets(self, valid, direction='y', outer=None):
+        if valid(self):
+            for i, caret in enumerate(_carets(self.outer, outer or self.outer, direction)):
+                yield self, i, caret
+        for res in self.element.carets(valid, self.direction or direction, self.inner):
+            yield res
+
+class Space(Singular):
+    def __init__(self, config, link=None):
+        self.config = config
+        self.link = link
+        self.inner = Box()
+        self.outer = self.inner
+        self.constraints = [], ()
+
+    def constrain(self, *rules):
+        self.constraints[0].extend(rules)
+
+    def copy(self):
+        return self.__class__(self.config, self.element, self.link)
+
+    def feed(self, layout, h_expand=None, v_expand=None):
+        min_width, min_height = self.config.get('min_size', (0,0))
+        expandflags = self.config.get('expand', None)
+        outer = self.outer
+        h_expand = expander(h_expand, self)
+        v_expand = expander(v_expand, self)
+        if expandflags in ('both', 'horizontal'):
+            self.constrain(
+                outer.left + min_width  <= outer.right,
+                h_expand == outer.right - outer.left,
+                (outer.left == h_expand.toplevel.outer.left)   | strong,
+                (outer.right == h_expand.toplevel.outer.right) | strong,
+            )
+        else:
+            self.constrain(outer.left + min_width  == outer.right)
+        if expandflags in ('both', 'vertical'):
+            self.constrain(
+                outer.top  + min_height <= outer.bottom,
+                v_expand == outer.bottom - outer.top,
+                (outer.top    == v_expand.toplevel.outer.top)    | strong,
+                (outer.bottom == v_expand.toplevel.outer.bottom) | strong,
+            )
+        else:
+            self.constrain(outer.top  + min_height == outer.bottom)
+        layout.update(self)
+
+    def draw(self, screen):
+        background = self.config.get('background')
+        if background:
+            screen(background, self.outer.value)
+
+class Label(Singular):
+    def __init__(self, config, source, link=None):
         self.config = config
         self.source = source
+        self.link = link
         self.inner = Box()
         self.outer = Box()
         self.constraints = [], ()
@@ -121,7 +265,7 @@ class Label(object):
         self.constraints[0].extend(rules)
 
     def copy(self):
-        return self.__class__(self.config, self.source)
+        return self.__class__(self.config, self.source, self.link)
 
     def feed(self, layout, h_expand=None, v_expand=None):
         inner = self.inner
@@ -151,7 +295,21 @@ class Label(object):
         )
         screen(self.surface)
 
+    def label_selection(self, start, stop, base=0):
+        if start <= base + len(self.source) and base <= stop:
+            start = clamp(0, len(self.source), start - base)
+            stop  = clamp(0, len(self.source), stop  - base)
+            (x0, y0), (w0, h0) = self.surface.selection(start, stop)
+            (x1, y1), (w1, h1) = self.outer.value
+            return rectangle(vec2(x0, y1), vec2(w0, h1))
+
+    def label_carets(self):
+        (x1, y1), (w1, h1) = self.outer.value
+        for (x0, y0), (w0, h0) in self.surface.carets():
+            yield rectangle(vec2(x0, y1), vec2(w0, h1))
+
 class Column(Container):
+    direction = 'y'
     def feed(self, layout, h_expand=None, v_expand=None):
         inner = self.inner
         outer = self.outer
@@ -188,6 +346,7 @@ class Column(Container):
         layout.update(self)
 
 class Row(Container):
+    direction = 'x'
     def feed(self, layout, h_expand=None, v_expand=None):
         inner = self.inner
         outer = self.outer
@@ -223,54 +382,11 @@ class Row(Container):
         )
         layout.update(self)
 
-class Space(object):
-    def __init__(self, config):
-        self.config = config
-        self.inner = Box()
-        self.outer = self.inner
-        self.constraints = [], ()
-
-    def constrain(self, *rules):
-        self.constraints[0].extend(rules)
-
-    def copy(self):
-        return self.__class__(self.config, self.element)
-
-    def feed(self, layout, h_expand=None, v_expand=None):
-        min_width, min_height = self.config.get('min_size', (0,0))
-        expandflags = self.config.get('expand', None)
-        outer = self.outer
-        h_expand = expander(h_expand, self)
-        v_expand = expander(v_expand, self)
-        if expandflags in ('both', 'horizontal'):
-            self.constrain(
-                outer.left + min_width  <= outer.right,
-                h_expand == outer.right - outer.left,
-                (outer.left == h_expand.toplevel.outer.left)   | strong,
-                (outer.right == h_expand.toplevel.outer.right) | strong,
-            )
-        else:
-            self.constrain(outer.left + min_width  == outer.right)
-        if expandflags in ('both', 'vertical'):
-            self.constrain(
-                outer.top  + min_height <= outer.bottom,
-                v_expand == outer.bottom - outer.top,
-                (outer.top    == v_expand.toplevel.outer.top)    | strong,
-                (outer.bottom == v_expand.toplevel.outer.bottom) | strong,
-            )
-        else:
-            self.constrain(outer.top  + min_height == outer.bottom)
-        layout.update(self)
-
-    def draw(self, screen):
-        background = self.config.get('background')
-        if background:
-            screen(background, self.outer.value)
-
-class Padding(object):
-    def __init__(self, config, element):
+class Padding(Composite):
+    def __init__(self, config, element, link=None):
         self.config = config
         self.element = element
+        self.link = link
         self.inner = element.inner
         self.outer = Box()
         self.constraints = [], ()
@@ -279,7 +395,7 @@ class Padding(object):
         self.constraints[0].extend(rules)
 
     def copy(self):
-        return self.__class__(self.config, self.element)
+        return self.__class__(self.config, self.element, self.link)
 
     def feed(self, layout, h_expand=None, v_expand=None):
         left, top, right, bottom = self.config.get('padding', (0,0,0,0))
@@ -332,10 +448,13 @@ class Padding(object):
             screen(background, self.outer.value)
         self.element.draw(screen)
 
-class Root(object):
-    def __init__(self, config, element):
+
+class Root(Composite):
+    direction = 'y'
+    def __init__(self, config, element, link=None):
         self.config = config
         self.element = element
+        self.link = link
         self.inner = Box()
         self.outer = self.inner
         self.constraints = [], ()
@@ -344,7 +463,7 @@ class Root(object):
         self.constraints[0].extend(rules)
 
     def copy(self):
-        return self.__class__(self.config, self.element)
+        return self.__class__(self.config, self.element, self.link)
 
     def feed(self, layout, h_expand=None, v_expand=None):
         outer = self.outer
@@ -368,6 +487,14 @@ class Root(object):
         if background:
             screen(background, self.outer.value)
         self.element.draw(screen)
+
+    def query(self, valid):
+        if valid(self):
+            yield self
+        for element in self.element.query(valid):
+            yield element
+        
+
 ###class Spacer(object):
 ###    placement = None
 ###    def __init__(self, min_size, segment=None, target=None):
@@ -1036,6 +1163,7 @@ def center(a, b, mode):
 ###            element.geometry.base + (-1, y0-1),
 ###            vec2(element.geometry.size.x+2, y1-y0+2)
 ###        )
+
 ###
 ###def seg_nearest_caret_x(element, position):
 ###    assert element.segment
@@ -1136,6 +1264,7 @@ def center(a, b, mode):
 ####            screen(self.background, self.outer)
 ####        screen(self.surface)
 ####
+
 ####    def selection(self, start, stop):
 ####        return self.surface.selection(start, stop)
 ####
