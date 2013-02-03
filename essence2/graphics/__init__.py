@@ -33,11 +33,11 @@ def dispatch(emit, event):
         emit('frame', [screen])
         pygame.display.flip()
     if event.type == pygame.KEYDOWN:
-        key = keyboard.bindings[event.key]
+        key = keyboard.bindings.get(event.key)
         modifiers = frozenset(keyboard.parse_modifiers(event.mod))
         emit('keydown', [key, modifiers, event.unicode])
     if event.type == pygame.KEYUP:
-        key = keyboard.bindings[event.key]
+        key = keyboard.bindings.get(event.key)
         modifiers = frozenset(keyboard.parse_modifiers(event.mod))
         emit('keyup', [key, modifiers])
     if event.type == pygame.MOUSEMOTION:

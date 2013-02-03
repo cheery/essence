@@ -34,6 +34,16 @@ class ListField(object):
     def index(self, field):
         return self.items.index(field)
 
+    def contextof(self, field):
+        if self == field:
+            return ()
+        for index, subfield in enumerate(self):
+            if subfield == None:
+                continue
+            res = subfield.contextof(field)
+            if res != None:
+                return ((self, index),) + res
+
 class TextField(object):
     def __init__(self, text, name=''):
         self.text = text
@@ -67,6 +77,12 @@ class TextField(object):
     def __str__(self):
         return self.text
 
+    def contextof(self, field):
+        if self == field:
+            return ()
+        else:
+            return None
+
 class Selection(object):
     def __init__(self, field, head, tail):
         self.field = field
@@ -98,6 +114,9 @@ class Selection(object):
     stop = property(_get_stop, _set_stop)
 
     def replace(self, data):
+        if isinstance(self.field, ListField):
+            if self.head == self.tail and not self.field.name.endswith('*'):
+                self.move(self.head+1, True)
         self.field[self.start:self.stop] = data
         self.head = self.tail = self.start + len(data)
 

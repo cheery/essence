@@ -17,22 +17,123 @@ import sys
 grammar_language = grammar.Language([
     grammar.Symbolic('rule', ('name', 'name*')),
     grammar.Symbolic('group', ('name', 'name*')),
-    grammar.Symbolic('data', ('name', 'type')),
-    grammar.Data('data', 'text'),
+    grammar.Symbolic('data', ('name', 'name')),
     grammar.Data('name', 'text'),
 ], root='rule')
 
 language = grammar.Language([
     grammar.Group('statement', ('call', 'def')),
-    grammar.Group('expression', ('var', 'call', 'number')),
+    grammar.Group('expression', ('var', 'call', 'number', 'string')),
     grammar.Symbolic('call', ('expression', 'expression*')),
     grammar.Symbolic('def', ('var', 'var*', 'statement*')),
     grammar.Data('var', 'text'),
     grammar.Data('number', 'text'),
+    grammar.Data('string', 'text'),
 ], root='statement*')
+
+def build_from_grammar(name):
+    t = language[name]
+    if isinstance(t, grammar.Symbolic):
+        lst = []
+        for subname in t.fields:
+            if subname.endswith('*'):
+                lst.append(ListField([], subname))
+            else:
+                lst.append(None)
+        return ListField(lst, name)
+    if isinstance(t, grammar.Data) and t.which == 'text':
+        return TextField("", name)
+        
+    raise Exception("%r cannot be buildt" % name)
 
 print language.text()
 
+def text_match(character):
+    def condition(key, mod, text):
+        return text == character
+    return condition
+
+constructor_bindings = [
+    ('call', text_match('('), 0),
+    ('def',  text_match('{'), 0),
+    ('var',  lambda key, mod, text: text and (text.isalpha() or text == '_'), 0),
+    ('number', lambda key, mod, text: text and (text.isdigit() or text in 'abcdef'), 1),
+    ('string', text_match('"'), 0),
+]
+
+def valid_slot(field):
+    assert isinstance(field, (TextField, ListField))
+    if isinstance(field, TextField):
+        return True
+    head_clear = len(field) > 0 and field[0] == None
+    return head_clear or field.name.endswith('*')
+
+def creep_inside(selection, field):
+    if valid_slot(field):
+        selection.field = field
+        selection.head = selection.tail = 0
+    else:
+        creep_inside(selection, field[0])
+
+def creep_inside2(field):
+    print 'c2', repr(field)
+    if valid_slot(field):
+        return field
+    else:
+        return creep_inside2(field[0])
+
+def climp_inside(selection, field):
+    if valid_slot(field):
+        selection.field = field
+        selection.head = selection.tail = len(field) - field.name.endswith('*')
+    else:
+        creep_inside(selection, field[-1])
+
+def climp_inside2(field):
+    if valid_slot(field):
+        return field
+    else:
+        return climp_inside2(field[-1])
+
+def next_valid_slot(field, index):
+    print repr(field), index
+    valid = valid_slot(field)
+    if isinstance(field, TextField):
+        if index < len(field):
+            return field, index + 1
+    elif valid and index < len(field):
+        return creep_inside2(field[index]), 0
+    elif index+1 < len(field):
+        return creep_inside2(field[index+1]), 0
+    context = root.contextof(field)
+    if len(context) > 0:
+        parent, index = context[-1]
+        if valid_slot(parent):
+            return parent, index + 1
+        else:
+            return next_valid_slot(parent, index)
+
+def attempt_construct(selection, key, mod, text):
+    if isinstance(selection.field, TextField):
+        return
+    best = None
+    treshold = None
+
+    current_distances = language.get_distances(selection.field.name)
+
+    for name, condition, cost in constructor_bindings:
+        if condition(key, mod, text) and name in current_distances:
+            if best == None or cost + current_distances[name][0] < treshold:
+                best = name
+    if best != None:
+        while selection.field.name != best:
+            nxt = language.get_distances(selection.field.name)[best][1]
+            new_field = build_from_grammar(nxt)
+            selection.replace([new_field])
+            creep_inside(selection, new_field)
+        if isinstance(new_field, TextField):
+            selection.replace(text)
+        return True
 
 red = rgba(255, 0, 0)
 green = rgba(80, 255, 80)
@@ -86,7 +187,7 @@ def visualize_list(fields, parent, visualizer, separator=None, header=None, foot
         res.append(header)
     for slot, field in enumerate(fields):
         if slot != 0 and separator:
-            res.append(separator.dup())
+            res.append(separator.copy())
         out = visualize(field, visualizer)
         out.link = Link(parent, slot+base, field)
         res.append(out)
@@ -725,7 +826,14 @@ def on_resize(width, height):
 def on_keydown(key, mod, text):
     shift = 'shift' in mod
     ctrl = 'ctrl' in mod
-    if key == 'up':
+    if False:
+        pass
+    elif key == 'return':
+        res = next_valid_slot(selection.field, selection.head)
+        if res:
+            selection.field = res[0]
+            selection.move(res[1], False)
+    elif key == 'up':
         navigate(selection.eye, vec2( 0,-1), shift, ctrl)
     elif key == 'down':
         navigate(selection.eye, vec2( 0,+1), shift, ctrl)
@@ -748,15 +856,16 @@ def on_keydown(key, mod, text):
         selection.move(len(selection.field), shift)
     elif key == 'escape':
         sys.exit(0)
-    elif key == 'l' and isinstance(selection.field, ListField):
-        selection.replace([ListField([], name="list*")])
-    elif key == 'r' and isinstance(selection.field, ListField):
-        selection.replace([ListField([], name="row*")])
-    elif key == 't' and isinstance(selection.field, ListField):
-        selection.replace([TextField('add text here')])
-    elif len(text) > 0:
-        if isinstance(selection.field, TextField):
-            selection.replace(text)
+    elif len(text) > 0 and isinstance(selection.field, TextField):
+        selection.replace(text)
+    elif attempt_construct(selection, key, mod, text):
+        pass
+#    elif key == 'l' and isinstance(selection.field, ListField):
+#        selection.replace([ListField([], name="list*")])
+#    elif key == 'r' and isinstance(selection.field, ListField):
+#        selection.replace([ListField([], name="row*")])
+#    elif key == 't' and isinstance(selection.field, ListField):
+#        selection.replace([TextField('add text here')])
     else:
         print key, mod, text
 
@@ -772,8 +881,9 @@ def pick(view, position):
 
 def on_motion(position, velocity, buttons):
     if buttons[0] == 1 and selection.drag:
-        nearest = nearest_caret(selection.drag, position)
-        selection.move(nearest, True)
+        navigate(position, None, True, False)
+#        nearest = nearest_caret(selection.drag, position)
+#        selection.move(nearest, True)
 #
 
 def nearest_caret(element, position):
@@ -795,14 +905,16 @@ def nearest_caret(element, position):
 
 def on_buttondown(position, button):
     if button == 1:
-        element = None
-        for element in ui.pick(view, position):
-            pass
-        if element:
-            nearest = nearest_caret(element, position)
-            selection.field = element.target
-            selection.move(nearest, False)
-            selection.drag = element
+        navigate(position, None, False, False)
+#
+#        element = None
+#        for element in ui.pick(view, position):
+#            pass
+#        if element:
+#            nearest = nearest_caret(element, position)
+#            selection.field = element.target
+#            selection.move(nearest, False)
+#            selection.drag = element
 
 def on_quit():
     pass
