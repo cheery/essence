@@ -14,6 +14,9 @@ from essence2 import ui
 from essence2 import grammar
 import sys
 
+from essence2.ui.layout import Space, Label, Row, Column, Border, Root, Config, Layout, Intron
+from essence2.ui import align
+
 grammar_language = grammar.Language([
     grammar.Symbolic('rule', ('name', 'name*')),
     grammar.Symbolic('group', ('name', 'name*')),
@@ -154,7 +157,6 @@ root = ListField([
         ListField([], name='var*'),
         ListField([], name='statement*'),
     ], name='def'),
-    None,
     ListField([
         TextField("test", name='var'),
         ListField([
@@ -671,54 +673,215 @@ default2 = dict(
     postprocess = graphics.blend_mult(gray),
 )
 
+default = Config(
+    font = font,
+    halign = align.low,
+    valign = align.high,
+)
+
+statement_list = Config(default,
+    padding = (3, 3, 3, 3),
+    spacing = 0,
+)
+
+unknown_list = Config(statement_list,
+    background = border,
+)
+
+unknown_name = Config(default,
+    postprocess = graphics.blend_mult(rgba(255,0,0)),
+)
+
+variable_style = Config(default,
+    postprocess = graphics.blend_mult(rgba(0x80,0x80,0x80)),
+)
+
+indent = Config(default,
+    padding = (17, 0, 0, 0),
+)
+
+leftalign = Config(default,
+    halign = align.left,
+)
+
+stringcolor = Config(default,
+    postprocess = graphics.blend_mult(rgba(0x80,0x80,0x20)),
+)
+
+null = Label(default, 'None')
+default_empty = Label(default, "empty")
+
+def lookup_intron(layout, generator, field):
+    if field == None:
+        return null.copy()
+    intron = layout.get_intron(field)
+    if intron == None or intron.generator != generator:
+        intron = Intron(layout, generator, field)
+    return intron
+
+def build_many(generator, fields, empty=default_empty, head=None, tail=None, spacing=None):
+    lst = []
+    if head:
+        lst.append(head.copy())
+    for index, field in enumerate(fields):
+        if index > 0 and spacing:
+            lst.append(spacing.copy())
+        lst.append(lookup_intron(layout, generator, field))
+    if len(fields) == 0 and empty:
+        lst.append(empty.copy())
+    if tail:
+        lst.append(tail.copy())
+    return lst
+
+lparen = Label(default, '(')
+rparen = Label(default, ')')
+comma = Label(default, ',')
+
+passer = Label(default, 'pass')
+deffer = Label(default, 'def')
+quote = Label(stringcolor, '"')
+
+def build_root_statement(field):
+    if field.name == 'var':
+        return Label(variable_style, field)
+    elif field.name == 'string':
+        return Row(default, [quote.copy(), Label(stringcolor, field), quote.copy()])
+    elif field.name in ('var*', 'expression*'):
+        return Row(statement_list, build_many(build_root_statement, field, None, lparen, rparen, comma))
+    elif field.name == 'statement*':
+        return Column(statement_list, build_many(build_root_statement, field, passer))
+    elif field.name == 'call' and len(field) == 2:
+        callee, args = build_many(build_root_statement, field)
+        return Row(statement_list, [callee, args])
+    elif field.name == 'def' and len(field) == 3:
+         name, args, body = build_many(build_root_statement, field)
+
+         return Column(leftalign, [
+            Row(default, [deffer.copy(), name, args]),
+            Border(indent, body),
+         ])
+
+    elif isinstance(field, ListField):
+        return Row(unknown_list, [
+            Column(statement_list, build_many(build_root_statement, field)),
+            Label(unknown_name, ":%s" % field.name),
+        ])
+    elif isinstance(field, TextField):
+        return Row(statement_list, [
+            Label(default, field), Label(unknown_name, ":%s" % field.name),
+        ])
+    else:
+        raise Exception("Unknown field")
+
+layout = Layout()
+view = Root(default, lookup_intron(layout, build_root_statement, root))
+view.viewport = vec2(640, 480)
+view.feed(layout)
+
+refreshlist = set()
+
 import time, math
+
+def selmark(subtron, base, start, stop):
+    (x,y), (w,h) = subtron.box.value
+    if start <= base + 1 and base <= stop:
+        start = clamp(0, 1, start - base)
+        stop  = clamp(0, 1, stop  - base)
+        x0 = (x, x+w)[start]
+        x1 = (x, x+w)[stop]
+        return rectangle(vec2(x0, y), vec2(x1-x0, h))
 
 def on_frame(screen):
     global view
     screen(background_color)
-    width, height = screen.size
 
-    now = time.time()
-    left = 10
-    top = 10
-    right = min(400, width - 20)
-    bottom = height - 20
-
-    root_config = dict(
-        align_by = ui.center,
-    )
-
-    layout = ui.Layout()
-    #solver.autosolve = True
-    view = ui.Root(root_config, build_layout(root))
-    view.constrain(
-        view.outer.left == left,
-        view.outer.top  == top,
-        (view.outer.right >= right),
-        (view.outer.bottom >= bottom),
-    )
-    view.feed(layout)
+    for node in refreshlist:
+        node.refresh()
+    refreshlist.clear()
     view.draw(screen)
 
-    g = view.selection(
-        lambda x: x.link != None and x.link.star and x.link.parent == selection.field,
-        lambda x: x.link.base,
-        selection.start,
-        selection.stop
-    )
-    for r in g:
-        screen(selc, r)
+    intron = layout.get_intron(selection.field)
+    if intron is None:
+        pass
+    elif isinstance(intron.source, TextField):
+        rc = intron.box.value
+        screen(marker, rc.offset((7,7,7,7)))
+        start, stop = selection.start, selection.stop
+        for node in intron.element.dfs:
+            if isinstance(node, Label):
+                rc = node.selection(start, stop, 0)
+                if rc != None:
+                    screen(selc, rc)
+    elif isinstance(intron.source, ListField):
+        rc = intron.box.value
+        screen(marker, rc.offset((7,7,7,7)))
+        start, stop = selection.start, selection.stop
+        if start - 1 >= 0:
+            subtron = layout.get_intron(intron.source[start-1])
+            if subtron != None:
+                rc = selmark(subtron, start-1, start, stop)
+                if rc != None:
+                    screen(selc, rc.offset((1,1,1,1)))
+        for i in range(start, stop):
+            if i < len(intron.source):
+                subtron = layout.get_intron(intron.source[i])
+                if subtron != None:
+                    rc = selmark(subtron, i, start, stop)
+                    if rc != None:
+                        screen(selc, rc.offset((1,1,1,1)))
+        if stop < len(intron.source):
+            subtron = layout.get_intron(intron.source[stop])
+            if subtron != None:
+                rc = selmark(subtron, stop, start, stop)
+                if rc != None:
+                    screen(selc, rc.offset((1,1,1,1)))
 
-    for label in view.query(lambda x: isinstance(x, ui.Label) and x.source == selection.field):
-        r = label.label_selection(selection.start, selection.stop)
-        if r:
-            screen(selc, r)
+def on_resize(width, height):
+    view.viewport = vec2(width, height)
+    view.move(view.scroll)
+    refreshlist.add(view)
 
-    for element in view.query(lambda x: x.link != None and x.link.dot and x.link.parent == selection.field):
-        screen(selc, element.outer.value)
+#    now = time.time()
+#    left = 10
+#    top = 10
+#    right = min(400, width - 20)
+#    bottom = height - 20
 
+#    root_config = dict(
+#        align_by = ui.center,
+#    )
 
-    recalibrate_eye()
+#    layout = ui.Layout()
+#    #solver.autosolve = True
+#    view = ui.Root(root_config, build_layout(root))
+#    view.constrain(
+#        view.outer.left == left,
+#        view.outer.top  == top,
+#        (view.outer.right >= right),
+#        (view.outer.bottom >= bottom),
+#    )
+#    view.feed(layout)
+#    view.draw(screen)
+#
+#    g = view.selection(
+#        lambda x: x.link != None and x.link.star and x.link.parent == selection.field,
+#        lambda x: x.link.base,
+#        selection.start,
+#        selection.stop
+#    )
+#    for r in g:
+#        screen(selc, r)
+#
+#    for label in view.query(lambda x: isinstance(x, ui.Label) and x.source == selection.field):
+#        r = label.label_selection(selection.start, selection.stop)
+#        if r:
+#            screen(selc, r)
+#
+#    for element in view.query(lambda x: x.link != None and x.link.dot and x.link.parent == selection.field):
+#        screen(selc, element.outer.value)
+#
+#
+#    recalibrate_eye()
 
 #    for e, o, caret in view.carets(lambda x: x.link != None and x.link.star):
 #        screen(white, caret)
@@ -820,12 +983,14 @@ def on_frame(screen):
 #    view.draw(screen)
 #    draw_selection(screen, view, selection)
 
-def on_resize(width, height):
-    pass
-
 def on_keydown(key, mod, text):
     shift = 'shift' in mod
     ctrl = 'ctrl' in mod
+
+    intron = layout.get_intron(selection.field)
+    if intron != None:
+        refreshlist.add(intron)
+
     if False:
         pass
     elif key == 'return':
@@ -833,18 +998,19 @@ def on_keydown(key, mod, text):
         if res:
             selection.field = res[0]
             selection.move(res[1], False)
-    elif key == 'up':
-        navigate(selection.eye, vec2( 0,-1), shift, ctrl)
-    elif key == 'down':
-        navigate(selection.eye, vec2( 0,+1), shift, ctrl)
+##    elif key == 'up':
+##        navigate(selection.eye, vec2( 0,-1), shift, ctrl)
+##    elif key == 'down':
+##        navigate(selection.eye, vec2( 0,+1), shift, ctrl)
+##    elif key == 'left':
+##        navigate(selection.eye, vec2(-1, 0), shift, ctrl)
+##    elif key == 'right':
+##        navigate(selection.eye, vec2(+1, 0), shift, ctrl)
+
     elif key == 'left':
-        navigate(selection.eye, vec2(-1, 0), shift, ctrl)
+        selection.move(selection.head-1, shift)
     elif key == 'right':
-        navigate(selection.eye, vec2(+1, 0), shift, ctrl)
-#    elif key == 'left':
-#        selection.move(selection.head-1, shift)
-#    elif key == 'right':
-#        selection.move(selection.head+1, shift)
+        selection.move(selection.head+1, shift)
     elif key == 'delete' or key == 'backspace':
         if selection.head == selection.tail:
             i = {'delete':+1, 'backspace':-1}[key]
