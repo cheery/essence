@@ -1,0 +1,227 @@
+#!/usr/bin/env python
+print "prototype 3"
+import pygame, time, sys, os, json
+from pygame.locals import *
+from OpenGL.GL import *
+from essence3.renderer import ShadingProgram, Atlas, Patch9, Buffer, Color, Font
+from essence3.layout import Slate, Label, Container, HBox, VBox, solve, Align, FlowAlign, flow_simple
+
+class VertexEmitter(object):
+    def __init__(self):
+        self.vbo   = Buffer()
+        self.clear()
+
+    def clear(self):
+        self.count = 0
+        self.data  = []
+
+    def __call__(self, x,y,s,t,cs,ct):
+        self.data.extend((x,y,s,t,cs,ct))
+        self.count += 1
+
+    def upload(self):
+        self.vbo.uploadList(self.data)
+
+class SimpleBackground(object):
+    def __init__(self, emit, mkgeom, mkspacgeom=None):
+        self.emit = emit
+        self.mkgeom = mkgeom
+        self.mkspacgeom = mkspacgeom
+
+    def __call__(self, node):
+        self.mkgeom(self.emit, (node.left, node.top, node.width, node.height), node.style['color'])
+        if self.mkspacgeom and isinstance(node, Container):
+            for i in range(1, len(node)):
+                self.mkspacgeom(self.emit, node.get_spacer(i), node.style['color'])
+
+class FontEngine(object):
+    def __init__(self, emit, font, lineheight, baseline, mathline):
+        self.emit = emit
+        self.font = font
+        self.lineheight = lineheight
+        self.baseline   = baseline
+        self.mathline   = mathline
+
+    def measure(self, source, scale):
+        return self.font.measure(source, scale)
+
+    def __call__(self, node):
+        self.font(
+            self.emit,
+            node.source,
+            (node.left, node.top + self.baseline * node.style['font_size']),
+            node.style['font_size'],
+            node.style['color'])
+
+background = 0x24, 0x24, 0x24
+font_path = "font/AnonymousPro_31"
+
+def make_rgba(atlas, (r,g,b,a)):
+    return Color(atlas.add_rgba((r,g,b,a)))
+
+def make_font(atlas, path):
+    return Font.load(atlas, path)
+
+def make_patch9(atlas, path):
+    return Patch9.load(atlas, path)
+
+def fill_quad(emit, (left, top, width, height), item, color=None):
+    color = color or self.item.atlas.white
+    s0 = float(texture.x) / texture.atlas.width
+    t0 = float(texture.y) / texture.atlas.height
+    s1 = float(texture.x+texture.width)  / texture.atlas.width
+    t1 = float(texture.y+texture.height) / texture.atlas.height
+    emit(left,       top,        s0, t0, color.s, color.t)
+    emit(left+width, top,        s1, t0, color.s, color.t)
+    emit(left+width, top+height, s1, t1, color.s, color.t)
+    emit(left,       top+height, s0, t1, color.s, color.t)
+
+def fill_atlas(emit, (left, top, width, height), atlas, color=None):
+    color = color or atlas.white
+    emit(left,       top,        0.0, 0.0, color.s, color.t)
+    emit(left+width, top,        1.0, 0.0, color.s, color.t)
+    emit(left+width, top+height, 1.0, 1.0, color.s, color.t)
+    emit(left,       top+height, 0.0, 1.0, color.s, color.t)
+
+class RootRenderer(object):
+    def __init__(self):
+        glEnable(GL_TEXTURE_2D)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        self.program = ShadingProgram.load('assets/ui.glsl')
+
+        self.atlas = Atlas.empty(1024, 1024)#(4096, 4096)
+        self.atlas.white = white = make_rgba(self.atlas, (255,255,255,255))
+        black = make_rgba(self.atlas, (0,0,0,255))
+        tr50  = make_rgba(self.atlas, (0xFF, 0xFF, 0xFF, 0x80))
+        green = make_rgba(self.atlas, (0x95, 0xe4, 0x54, 255))
+        cyan  = make_rgba(self.atlas, (0x8a, 0xc6, 0xf2, 255))
+        red   = make_rgba(self.atlas, (0xe5, 0x78, 0x6d, 255))
+        lime  = make_rgba(self.atlas, (0xca, 0xe6, 0x82, 255))
+        gray  = make_rgba(self.atlas, (0x99, 0x96, 0x8b, 255))
+        whiteish = make_rgba(self.atlas, (0xf6, 0xf3, 0xe8, 255)) 
+
+        self.font = make_font(self.atlas, font_path)
+        self.quad = Patch9.load(self.atlas, "assets/quad2.png")
+        self.border = Patch9.load(self.atlas, "assets/border.png")
+        self.atlas.upload()
+
+        self.vd = emit = VertexEmitter()
+
+        defaultstyle = dict(
+            background = SimpleBackground(emit, self.border, None),
+            color = white,
+            spacing = 21,
+            padding = (10, 10, 10, 10),
+            align   = FlowAlign(0, 1),
+            flow    = flow_simple,
+            font    = FontEngine(emit, self.font, 31, 22, 14),
+            font_size = 20.0 / 31,
+        )
+        textstyle = defaultstyle.copy()
+        textstyle['background'] = None
+        textstyle['color'] = whiteish
+        limestyle = textstyle.copy()
+        limestyle['color'] = lime
+
+        root = VBox([
+            HBox([
+                VBox([
+                    Label("hello", textstyle),
+                    Label("user",  textstyle),
+                ],defaultstyle),
+                Label("this used to be", textstyle),
+                Label("a slate", limestyle),
+            ], defaultstyle),
+            HBox([
+                Label("A", textstyle),
+                Label("B", textstyle),
+                Label("C", textstyle),
+            ], defaultstyle),
+            HBox([
+                Label("1", textstyle),
+                Label("2", textstyle),
+                Slate((100, 100), defaultstyle),
+            ], defaultstyle),
+        ], defaultstyle)
+
+        self.vd.clear()
+        solve(root)
+        root.render()
+        #self.font(emit, "Hello thjereq = 5 + 0", (31, 20+ 31*1), 1.0, lime)
+        #self.font(emit, "Hello there", (31, 20+ 31*2), 0.9, lime)
+        #self.font(emit, "Hello there", (31, 20+ 31*3), 0.8, lime)
+        #self.font(emit, "Hello there", (31, 20+ 31*4), 0.7)
+        #self.border(emit, (0, 0, resolution[0], resolution[1]))
+        #self.border(emit, (10, 10, resolution[0]-20, resolution[1]-20), lime)
+
+        #self.quad(emit, (200, 200, 80, 80), lime)
+        #self.quad(emit, (280, 230, 80, 80), white)
+        #lime(emit, (200, 400, 32, 32))
+
+        #low = 0
+        #high = 0
+        #for i in self.font.measure("Hello thjereq = 5 + 0"):
+        #    tr50(emit, (31+i, 20+10, 1, 31))
+        #    high = i
+        #tr50(emit, (31+low, 20+31-22, high-low, 1))
+        #tr50(emit, (31+low, 20+31-8, high-low, 1), tr50)
+        #tr50(emit, (31+low, 20+31, high-low, 1))
+        #tr50(emit, (31+low, 20+31+9, high-low, 1))
+
+
+        left = resolution[0]-512
+        top = resolution[1]-512
+        black(emit, (left,top, 512, 512), tr50)
+        fill_atlas(emit, (left,top,512,512), self.atlas, tr50)
+
+        self.vd.upload()
+
+#        self.vbo = vbo = Buffer()
+#        vbo.count = len(data) / 6
+#        vbo.uploadList(data)
+#        print vbo.count
+
+    def __call__(self):
+        r,g,b = background
+        glClearColor(r/255.0, g/255.0, b/255.0, 0.0)
+        glClear(GL_COLOR_BUFFER_BIT)
+        program = self.program
+        program.use()
+        program.uniform2f("resolution", resolution)
+        #program.uniform4f("color", (1.0, 1.0, 1.0, 1.0)) #(0x42/255.0, 0x45/255.0, 0x3B/255.0, 1.0))
+        program.bind("texture", self.atlas)
+        self.vd.vbo.bind()
+        program.setPointer("position", 2, GL_FLOAT, stride=6*4, offset=0*4)
+        program.setPointer("texcoord", 2, GL_FLOAT, stride=6*4, offset=2*4)
+        program.setPointer("colorsrc", 2, GL_FLOAT, stride=6*4, offset=4*4)
+
+        glDrawArrays(GL_QUADS, 0, self.vd.count)
+        program.disablePointer("position")
+        program.disablePointer("texcoord")
+        self.vd.vbo.unbind()
+        program.unbind_all()
+        glUseProgram(0)
+
+resolution = 1200, 1000
+flags = HWSURFACE | OPENGL
+if len(sys.argv) <= 1:
+    flags |= DOUBLEBUF
+pygame.display.set_mode(resolution, flags)
+done = False
+latencies = []
+render = RootRenderer()
+while not done:
+    frame_begin = now = time.time()
+    render()
+    pygame.display.flip()
+    now = time.time()
+    latencies.append(now - frame_begin)
+    for event in pygame.event.get():
+        if event.type == KEYDOWN and event.key == K_ESCAPE:
+            done = True
+        if event.type == QUIT:
+            done = True
+    if len(latencies) >= 100:
+        print "%6.2fms" % (1000 * sum(latencies) / len(latencies))
+        latencies = []
