@@ -4,7 +4,261 @@ import pygame, time, sys, os, json
 from pygame.locals import *
 from OpenGL.GL import *
 from essence3.renderer import ShadingProgram, Atlas, Patch9, Buffer, Color, Font
-from essence3.layout import Slate, Label, Container, HBox, VBox, solve, Align, FlowAlign, flow_simple
+from essence3.layout import Slate, Label, Container, HBox, VBox, solve, Align, FlowAlign, flow_simple, Intron
+from essence3.document import ListField, TextField, Selection, clamp
+
+simple_example = ListField([
+    TextField("arbitrary text field", name='string'),
+    ListField([
+        TextField('res', name='var'),
+        ListField([
+            ListField([
+                TextField("5", name='int'),
+                TextField("n", name='var'),
+            ], name='divide'),
+            TextField("c", name='var'),
+        ], name='add'),
+    ], name='assign'),
+], name="statement*")
+
+class BaseLanguageVisual(object):
+    def __init__(self, source):
+        self.source = source
+        self.selected = None
+        self.atlas = Atlas.empty(4096, 4096)
+        self.atlas.white = white = make_rgba(self.atlas, (255,255,255,255))
+        self.vd = VertexEmitter()
+        self.vs = VertexEmitter()
+        self.font = make_font(self.atlas, font_path)
+        self.font_small = make_font(self.atlas, font_path_small)
+        self.border = Patch9.load(self.atlas, "assets/border.png")
+        self.quad   = Patch9.load(self.atlas, "assets/quad2.png")
+        self.marker = Patch9.load(self.atlas, "assets/box.marker.png")
+        self.black = make_rgba(self.atlas, (0,0,0,255))
+        self.tr50  = make_rgba(self.atlas, (0xFF, 0xFF, 0xFF, 0x80))
+        self.tr50b = make_rgba(self.atlas, (0x28, 0x28, 0x28, 0x80))
+        self.green = make_rgba(self.atlas, (0x95, 0xe4, 0x54, 255))
+        self.cyan  = make_rgba(self.atlas, (0x8a, 0xc6, 0xf2, 255))
+        self.red   = make_rgba(self.atlas, (0xe5, 0x78, 0x6d, 255))
+        self.lime  = make_rgba(self.atlas, (0xca, 0xe6, 0x82, 255))
+        self.gray  = make_rgba(self.atlas, (0x99, 0x96, 0x8b, 255))
+        self.back  = make_rgba(self.atlas, (0x24, 0x24, 0x24, 255))
+        whiteish = make_rgba(self.atlas, (0xf6, 0xf3, 0xe8, 255)) 
+
+        self.font_31 = FontEngine(self.vd, self.font, 31, 22, 14)
+        self.font_17 = FontEngine(self.vd, self.font_small, 17, 12, 8)
+
+        self.atlas.upload()
+        self.default_style = dict(
+            background = None,
+            color      = whiteish,
+            spacing    = 5,
+            padding    = (0,0,0,0),
+            align      = FlowAlign(0, 0),
+            flow       = flow_simple,
+            font       = self.font_31,
+            font_size  = 1.0,
+            min_width  = 50,
+            min_height = 20,
+        )
+        self.unknown_field_style = self.default_style.copy()
+        self.unknown_field_style.update(
+            background = Background(self.vd, self.quad, self.tr50b) +
+            TextOnBackground(
+                self.font_17,
+                lambda node: node.source.name,
+                1.0, self.cyan,
+                (10, 10),
+            )
+            ,
+            padding = (
+                10,
+                10 + self.font_17.lineheight,
+                10,
+                10
+            ),
+        )
+        self.box = Intron(self.source, 0, self.build)
+
+    def hbuild(self, source):
+        style = self.unknown_field_style
+        if isinstance(source, ListField):
+            if len(source) > 0:
+                return HBox([
+                    Intron(item, index, self.build) for index, item in enumerate(source)
+                ], self.default_style), style
+            else:
+                return Label("empty", self.default_style), style
+        elif isinstance(source, TextField):
+            return Label(source, self.default_style), style
+
+    def build(self, source):
+        style = self.unknown_field_style
+        if isinstance(source, ListField):
+            if len(source) > 0:
+                return VBox([
+                    Intron(item, index, self.hbuild) for index, item in enumerate(source)
+                ], self.default_style), style
+            else:
+                return Label("empty", self.default_style), style
+        elif isinstance(source, TextField):
+            return Label(source, self.default_style), style
+
+    def select(self, intron, start=0, stop=0):
+        self.selected = intron
+        self.start = start
+        self.stop  = stop
+        self.update_selection()
+
+    def click(self, (x,y)):
+        hits = self.box.pick((x,y))
+        if len(hits) > 0:
+            intron = hits[-1]
+            start = stop = 0
+            if isinstance(intron.source, TextField):
+                for label in intron.traverse([], lambda node: isinstance(node, Label)):
+                    k, best = label.scan_offset((x,y))
+                    start = stop = k
+            if isinstance(intron.source, ListField):
+                k = 0
+                best = None
+                for subintron in intron.subintrons():
+                    i, c = subintron.scan_offset((x,y))
+                    print "offset", i, c
+                    if c <= best or best is None:
+                        best = c
+                        k = i
+                print "best", k, best
+                start = stop = k
+            self.select(intron, start, stop)
+
+    def mutate(self, key, text):
+        intron = self.selected
+        source = intron.source
+#        if text == '\n':
+#            intron.find_context
+        if key in (K_BACKSPACE, K_DELETE) and isinstance(source, TextField):
+            if self.start == self.stop:
+                if self.start > 0:
+                    self.start -= {K_BACKSPACE:1, K_DELETE:0}[key]
+                if self.stop < len(source):
+                    self.stop  += {K_BACKSPACE:0, K_DELETE:1}[key]
+            source[self.start:self.stop] = ''
+            self.stop = self.start
+            intron.rebuild()
+            self.update()
+        elif key in (K_BACKSPACE, K_DELETE) and isinstance(source, ListField):
+            if self.start == self.stop:
+                if self.start > 0:
+                    self.start -= {K_BACKSPACE:1, K_DELETE:0}[key]
+                if self.stop < len(source):
+                    self.stop  += {K_BACKSPACE:0, K_DELETE:1}[key]
+            source[self.start:self.stop] = []
+            self.stop = self.start
+            intron.rebuild()
+            self.update()
+        elif len(text) > 0 and isinstance(source, TextField):
+            source[self.start:self.stop] = text
+            self.start = self.stop = self.start + len(text)
+            intron.rebuild()
+            self.update()
+        elif len(text) > 0 and isinstance(source, ListField):
+            print 'created new'
+            field = TextField(text, name="unk")
+#            bot = len(source)
+            source[self.start:self.stop] = [field]
+            self.start = self.stop = self.start + 1
+            intron.rebuild()
+            self.update()
+            for subintron in intron.subintrons():
+                if subintron.source == field:
+                    self.select(subintron, 1, 1)
+
+#        TextField('res', name='var'),
+#        print key, text
+
+    def update(self):
+        solve(self.box, (20, 20))
+        self.vd.clear()
+        self.box.render()
+
+        left = resolution[0] - 512
+        top  = resolution[1] - 512
+        self.black(self.vd, (left, top, 512, 512), self.tr50)
+        fill_atlas(self.vd, (left, top, 512, 512), self.atlas, self.tr50)
+
+        self.vd.upload(GL_DYNAMIC_DRAW)
+        self.update_selection()
+
+    def update_selection(self, n=7):
+        intron = self.selected
+        self.vs.clear()
+        if intron:
+            self.marker(self.vs, (intron.left-n, intron.top-n, intron.width+n+n, intron.height+n+n))
+
+        if intron and isinstance(intron.source, TextField):
+            for label in intron.traverse([], lambda node: isinstance(node, Label)):
+                self.tr50(self.vs, label.selection_rect(self.start, self.stop))
+
+        if intron and isinstance(intron.source, ListField):
+            for subintron in intron.subintrons():
+                offsets = (0, subintron.width)
+                if self.start <= subintron.index + 1 and self.stop >= subintron.index:
+                    x0 = offsets[clamp(0, 1, self.start - subintron.index)]
+                    x1 = offsets[clamp(0, 1, self.stop  - subintron.index)]
+                    rc = subintron.left + x0 - 1, subintron.top, x1-x0 + 2, subintron.height
+                    self.tr50(self.vs, rc)
+                
+        self.vs.upload(GL_DYNAMIC_DRAW)
+#
+#        self.vd = emit = VertexEmitter()
+#
+#        defaultstyle = dict(
+#            background = SimpleBackground(emit, self.border, None),
+#            color = white,
+#            spacing = 21,
+#            padding = (10, 10, 10, 10),
+#            align   = FlowAlign(0, 1),
+#            flow    = flow_simple,
+#            font    = FontEngine(emit, self.font, 31, 22, 14),
+#            font_size = 20.0 / 31,
+#        )
+#        textstyle = defaultstyle.copy()
+#        textstyle['background'] = None
+#        textstyle['color'] = whiteish
+#        limestyle = textstyle.copy()
+#        limestyle['color'] = lime
+#
+#        root = VBox([
+#            HBox([
+#                VBox([
+#                    Label("hello", textstyle),
+#                    Label("user",  textstyle),
+#                ],defaultstyle),
+#                Label("this used to be", textstyle),
+#                Label("a slate", limestyle),
+#            ], defaultstyle),
+#            HBox([
+#                Label("A", textstyle),
+#                Label("B", textstyle),
+#                Label("C", textstyle),
+#            ], defaultstyle),
+#            HBox([
+#                Label("1", textstyle),
+#                Label("2", textstyle),
+#                Slate((100, 100), defaultstyle),
+#            ], defaultstyle),
+#        ], defaultstyle)
+#
+#        self.vd.clear()
+#        solve(root)
+#        root.render()
+#        left = resolution[0]-512
+#        top = resolution[1]-512
+#        black(emit, (left,top, 512, 512), tr50)
+#        fill_atlas(emit, (left,top,512,512), self.atlas, tr50)
+#
+#        self.vd.upload()
 
 class VertexEmitter(object):
     def __init__(self):
@@ -19,20 +273,68 @@ class VertexEmitter(object):
         self.data.extend((x,y,s,t,cs,ct))
         self.count += 1
 
-    def upload(self):
-        self.vbo.uploadList(self.data)
+    def upload(self, usage=GL_STATIC_DRAW):
+        self.vbo.uploadList(self.data, usage)
 
-class SimpleBackground(object):
-    def __init__(self, emit, mkgeom, mkspacgeom=None):
-        self.emit = emit
+    def render(self, program):
+        self.vbo.bind()
+        program.setPointer("position", 2, GL_FLOAT, stride=6*4, offset=0*4)
+        program.setPointer("texcoord", 2, GL_FLOAT, stride=6*4, offset=2*4)
+        program.setPointer("colorsrc", 2, GL_FLOAT, stride=6*4, offset=4*4)
+        glDrawArrays(GL_QUADS, 0, self.count)
+        program.disablePointer("position")
+        program.disablePointer("texcoord")
+        self.vbo.unbind()
+
+class Background(object):
+    def __init__(self, emit, mkgeom, color=None):
+        self.emit   = emit
         self.mkgeom = mkgeom
-        self.mkspacgeom = mkspacgeom
+        self.color  = color
 
     def __call__(self, node):
-        self.mkgeom(self.emit, (node.left, node.top, node.width, node.height), node.style['color'])
-        if self.mkspacgeom and isinstance(node, Container):
+        self.mkgeom(self.emit, (node.left, node.top, node.width, node.height), self.color or node.style['color'])
+    
+    def __add__(self, other):
+        return CombinedBackground(self, other)
+
+class SpacerBackground(object):
+    def __init__(self, emit, mkgeom):
+        self.emit   = emit
+        self.mkgeom = mkgeom
+
+    def __call__(self, node):
+        if isinstance(node, Container):
             for i in range(1, len(node)):
-                self.mkspacgeom(self.emit, node.get_spacer(i), node.style['color'])
+                self.mkgeom(self.emit, node.get_spacer(i), node.style['color'])
+    
+    def __add__(self, other):
+        return CombinedBackground(self, other)
+
+class TextOnBackground(object):
+    def __init__(self, engine, textfn, scale=1.0, color=None, offset=(0,0)):
+        self.engine = engine
+        self.textfn = textfn
+        self.scale  = scale
+        self.color  = color
+        self.offset = offset
+
+    def __call__(self, node):
+        left = self.offset[0] + node.left
+        top  = self.offset[1] + node.top + self.engine.baseline * self.scale
+        self.engine.invoke(self.textfn(node), (left,top), self.scale, self.color)
+    
+    def __add__(self, other):
+        return CombinedBackground(self, other)
+
+class CombinedBackground(object):
+    def __init__(self, left, right):
+        self.left  = left
+        self.right = right
+
+    def __call__(self, node):
+        self.left(node)
+        self.right(node)
 
 class FontEngine(object):
     def __init__(self, emit, font, lineheight, baseline, mathline):
@@ -45,16 +347,22 @@ class FontEngine(object):
     def measure(self, source, scale):
         return self.font.measure(source, scale)
 
+    def invoke(self, text, position, scale, color):
+        self.font(self.emit, text, position, scale, color)
+
     def __call__(self, node):
+        left, top, right, bottom = node.style['padding']
         self.font(
             self.emit,
             node.source,
-            (node.left, node.top + self.baseline * node.style['font_size']),
+            (left + node.left, top + node.top + self.baseline * node.style['font_size']),
             node.style['font_size'],
             node.style['color'])
 
 background = 0x24, 0x24, 0x24
 font_path = "font/AnonymousPro_31"
+#font_path = "font/proggy_tiny"
+font_path_small = "font/AnonymousPro_17"
 
 def make_rgba(atlas, (r,g,b,a)):
     return Color(atlas.add_rgba((r,g,b,a)))
@@ -89,98 +397,9 @@ class RootRenderer(object):
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         self.program = ShadingProgram.load('assets/ui.glsl')
-
-        self.atlas = Atlas.empty(1024, 1024)#(4096, 4096)
-        self.atlas.white = white = make_rgba(self.atlas, (255,255,255,255))
-        black = make_rgba(self.atlas, (0,0,0,255))
-        tr50  = make_rgba(self.atlas, (0xFF, 0xFF, 0xFF, 0x80))
-        green = make_rgba(self.atlas, (0x95, 0xe4, 0x54, 255))
-        cyan  = make_rgba(self.atlas, (0x8a, 0xc6, 0xf2, 255))
-        red   = make_rgba(self.atlas, (0xe5, 0x78, 0x6d, 255))
-        lime  = make_rgba(self.atlas, (0xca, 0xe6, 0x82, 255))
-        gray  = make_rgba(self.atlas, (0x99, 0x96, 0x8b, 255))
-        whiteish = make_rgba(self.atlas, (0xf6, 0xf3, 0xe8, 255)) 
-
-        self.font = make_font(self.atlas, font_path)
-        self.quad = Patch9.load(self.atlas, "assets/quad2.png")
-        self.border = Patch9.load(self.atlas, "assets/border.png")
-        self.atlas.upload()
-
-        self.vd = emit = VertexEmitter()
-
-        defaultstyle = dict(
-            background = SimpleBackground(emit, self.border, None),
-            color = white,
-            spacing = 21,
-            padding = (10, 10, 10, 10),
-            align   = FlowAlign(0, 1),
-            flow    = flow_simple,
-            font    = FontEngine(emit, self.font, 31, 22, 14),
-            font_size = 20.0 / 31,
-        )
-        textstyle = defaultstyle.copy()
-        textstyle['background'] = None
-        textstyle['color'] = whiteish
-        limestyle = textstyle.copy()
-        limestyle['color'] = lime
-
-        root = VBox([
-            HBox([
-                VBox([
-                    Label("hello", textstyle),
-                    Label("user",  textstyle),
-                ],defaultstyle),
-                Label("this used to be", textstyle),
-                Label("a slate", limestyle),
-            ], defaultstyle),
-            HBox([
-                Label("A", textstyle),
-                Label("B", textstyle),
-                Label("C", textstyle),
-            ], defaultstyle),
-            HBox([
-                Label("1", textstyle),
-                Label("2", textstyle),
-                Slate((100, 100), defaultstyle),
-            ], defaultstyle),
-        ], defaultstyle)
-
-        self.vd.clear()
-        solve(root)
-        root.render()
-        #self.font(emit, "Hello thjereq = 5 + 0", (31, 20+ 31*1), 1.0, lime)
-        #self.font(emit, "Hello there", (31, 20+ 31*2), 0.9, lime)
-        #self.font(emit, "Hello there", (31, 20+ 31*3), 0.8, lime)
-        #self.font(emit, "Hello there", (31, 20+ 31*4), 0.7)
-        #self.border(emit, (0, 0, resolution[0], resolution[1]))
-        #self.border(emit, (10, 10, resolution[0]-20, resolution[1]-20), lime)
-
-        #self.quad(emit, (200, 200, 80, 80), lime)
-        #self.quad(emit, (280, 230, 80, 80), white)
-        #lime(emit, (200, 400, 32, 32))
-
-        #low = 0
-        #high = 0
-        #for i in self.font.measure("Hello thjereq = 5 + 0"):
-        #    tr50(emit, (31+i, 20+10, 1, 31))
-        #    high = i
-        #tr50(emit, (31+low, 20+31-22, high-low, 1))
-        #tr50(emit, (31+low, 20+31-8, high-low, 1), tr50)
-        #tr50(emit, (31+low, 20+31, high-low, 1))
-        #tr50(emit, (31+low, 20+31+9, high-low, 1))
-
-
-        left = resolution[0]-512
-        top = resolution[1]-512
-        black(emit, (left,top, 512, 512), tr50)
-        fill_atlas(emit, (left,top,512,512), self.atlas, tr50)
-
-        self.vd.upload()
-
-#        self.vbo = vbo = Buffer()
-#        vbo.count = len(data) / 6
-#        vbo.uploadList(data)
-#        print vbo.count
+        self.visual = BaseLanguageVisual(simple_example)
+        self.visual.update()
+        self.visual.select(self.visual.box)
 
     def __call__(self):
         r,g,b = background
@@ -190,16 +409,9 @@ class RootRenderer(object):
         program.use()
         program.uniform2f("resolution", resolution)
         #program.uniform4f("color", (1.0, 1.0, 1.0, 1.0)) #(0x42/255.0, 0x45/255.0, 0x3B/255.0, 1.0))
-        program.bind("texture", self.atlas)
-        self.vd.vbo.bind()
-        program.setPointer("position", 2, GL_FLOAT, stride=6*4, offset=0*4)
-        program.setPointer("texcoord", 2, GL_FLOAT, stride=6*4, offset=2*4)
-        program.setPointer("colorsrc", 2, GL_FLOAT, stride=6*4, offset=4*4)
-
-        glDrawArrays(GL_QUADS, 0, self.vd.count)
-        program.disablePointer("position")
-        program.disablePointer("texcoord")
-        self.vd.vbo.unbind()
+        program.bind("texture", self.visual.atlas)
+        self.visual.vd.render(program)
+        self.visual.vs.render(program)
         program.unbind_all()
         glUseProgram(0)
 
@@ -222,6 +434,11 @@ while not done:
             done = True
         if event.type == QUIT:
             done = True
+        if event.type == MOUSEBUTTONDOWN:
+            x, y = event.pos
+            render.visual.click((x,y))
+        if event.type == KEYDOWN:
+            render.visual.mutate(event.key, event.unicode)
     if len(latencies) >= 100:
         print "%6.2fms" % (1000 * sum(latencies) / len(latencies))
         latencies = []
