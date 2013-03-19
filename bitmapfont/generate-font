@@ -20,6 +20,9 @@ if __name__ == '__main__':
 
 
     metadata = {}
+    metadata['height']   = size
+    metadata['baseline'] = face.bbox.yMax * float(size)/face.height
+
     for glyph, width, height, bitmap in face:
         metric = glyph['metric']['bearing']['h']
         if width*height > 0:
