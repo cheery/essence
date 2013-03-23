@@ -6,70 +6,96 @@
 from argon import Argon, rgba, graphics, hsva
 from time import time
 from math import sin, cos
+from colorpicker import Colorpicker
 argon = Argon()
-
 background_color = rgba(0x24, 0x24, 0x24)
-
 white      = rgba(255,255,255)
 black      = rgba(0,0,0)
-tr50       = rgba(0xFF, 0xFF, 0xFF, 0x80)
-tr50b      = rgba(0x28, 0x28, 0x28, 0x80)
-green      = rgba(0x95, 0xe4, 0x54)
-cyan       = rgba(0x8a, 0xc6, 0xf2)
-red        = rgba(0xe5, 0x78, 0x6d)
-lime       = rgba(0xca, 0xe6, 0x82)
-gray       = rgba(0x99, 0x96, 0x8b)
-back       = rgba(0x24, 0x24, 0x24)
-whiteish   = rgba(0xf6, 0xf3, 0xe8)
-background = rgba(0x24, 0x24, 0x24)
 
-red = rgba(255, 0, 0)
-green = rgba(0, 255, 0)
-blue = rgba(0, 0, 255)
-border = argon.patch9("border.png")
-block = argon.patch9("block.png")
-font = argon.font("font/AnonymousPro_17")
-
-hues = argon.image("hue-saturation-360x256.png")
-h = 120
+picker = Colorpicker(argon)
+picker.left = 100
+picker.top  = 100
 
 def on_frame():
-    v = sin(time())/2.0 + 0.5
-    s0, s1 = 0.0, 1.0
-#    c0 = v * (1-s0)
-#    c1 = v * (1-s1)
-    v *= 255
-    r0 = rgba(v, 0, 0)
-    r1 = rgba(v, v, 0)
-    r2 = rgba(0, v, 0)
-    r3 = rgba(0, v, v)
-    r4 = rgba(0, 0, v)
-    r5 = rgba(v ,0, v)
-    r6 = rgba(v ,0, v)
-    r7 = rgba(v ,v, v)
-
     argon.clear(background_color)
-    argon.render([
-        ((10,  10,  500, 500), (red, green, blue, red), border),
-        ((50,  50,  200, 200), red, border),
-        ((100, 100, 200, 200), green, border),
-        ((150, 150, 200, 200), blue, border),
-        ((10, 400, 200, font.height*1.2), gray, border),
-        ((20, 400+font.baseline), "hello Jjason", whiteish, font),
-
-        ((60-10, 500-10, 510+20, 256+20), black, block),
-
-        ((60, 500, 360, 256), rgba(255,255,255,255), hues),
-        ((360+60, 500, 30, 256), (red,red,black,black), argon.plain),
-        ((360+90, 500, 120, 256), rgba(255,0,0), argon.plain),
-
-        ((60-8, 500-8+256, 16, 16), white, border),
-        ((60+360, 500-8, 30, 16), white, border),
-        # color bar
-    ])
+    picker.render(argon)
 
 def on_keydown(name, mod, text):
     if name == 'escape':
         argon.done = True
 
-argon.run(on_frame, on_keydown) #, on_keyup, on_mousedown, on_mouseup, on_mousemotion)
+def on_mousedown(button, pos):
+    picker.mousedown(button, pos)
+
+def on_mouseup(button, pos):
+    picker.mouseup(button, pos)
+
+def on_mousemotion(pos, vel):
+    picker.mousemotion(pos, vel)
+
+argon.run(on_frame, on_keydown, None, on_mousedown, on_mouseup, on_mousemotion)
+
+#tr50       = rgba(0xFF, 0xFF, 0xFF, 0x80)
+#tr50b      = rgba(0x28, 0x28, 0x28, 0x80)
+#green      = rgba(0x95, 0xe4, 0x54)
+#cyan       = rgba(0x8a, 0xc6, 0xf2)
+#red        = rgba(0xe5, 0x78, 0x6d)
+#lime       = rgba(0xca, 0xe6, 0x82)
+#gray       = rgba(0x99, 0x96, 0x8b)
+#back       = rgba(0x24, 0x24, 0x24)
+#whiteish   = rgba(0xf6, 0xf3, 0xe8)
+#background = rgba(0x24, 0x24, 0x24)
+#
+#red = rgba(255, 0, 0)
+#green = rgba(0, 255, 0)
+#blue = rgba(0, 0, 255)
+#border = argon.patch9("border.png")
+#block = argon.patch9("block.png")
+#font = argon.font("font/AnonymousPro_17")
+#
+#hues = argon.image("hue-saturation-360x256.png")
+#h = 120
+#
+#def on_frame():
+#    v = sin(time())/2.0 + 0.5
+#    s0, s1 = 0.0, 1.0
+##    c0 = v * (1-s0)
+##    c1 = v * (1-s1)
+#    v *= 255
+#    r0 = rgba(v, 0, 0)
+#    r1 = rgba(v, v, 0)
+#    r2 = rgba(0, v, 0)
+#    r3 = rgba(0, v, v)
+#    r4 = rgba(0, 0, v)
+#    r5 = rgba(v ,0, v)
+#    r6 = rgba(v ,0, v)
+#    r7 = rgba(v ,v, v)
+#
+#    argon.clear(background_color)
+#    argon.render([
+#        ((10,  10,  500, 500), (red, green, blue, red), border),
+#        ((50,  50,  200, 200), red, border),
+#        ((100, 100, 200, 200), green, border),
+#        ((150, 150, 200, 200), blue, border),
+#        ((10, 400, 200, font.height*1.2), gray, border),
+#        ((20, 400+font.baseline), "hello Jjason", whiteish, font),
+#
+#        ((60-10, 500-10, 510+20, 256+20), black, block),
+#
+#        ((60, 500, 360, 256), rgba(255,255,255,255), hues),
+#        ((360+60, 500, 30, 256), (red,red,black,black), argon.plain),
+#        ((360+90, 500, 120, 256), rgba(255,0,0), argon.plain),
+#
+#        ((60-8, 500-8+256, 16, 16), white, border),
+#        ((60+360, 500-8, 30, 16), white, border),
+#        # color bar
+#    ])
+#
+#
+#def on_mousedown(button, pos):
+#    pass
+#
+#def on_mousemotion(pos, vel):
+#    print pos
+#
+#argon.run(on_frame, on_keydown, None, on_mousedown, None, on_mousemotion)

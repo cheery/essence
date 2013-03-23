@@ -113,7 +113,7 @@ class Argon(object):
             json.load(open(os.path.join(path, 'metadata.json')))
         )
 
-    def run(self, on_frame, on_keydown=None, on_keyup=None):
+    def run(self, on_frame, on_keydown=None, on_keyup=None, on_mousedown=None, on_mouseup=None, on_mousemotion=None):
         latencies = []
         while not self.done:
             frame_begin = now = time.time()
@@ -135,6 +135,12 @@ class Argon(object):
                     name = keyboard.bindings.get(event.key, None)
                     modifiers = frozenset(keyboard.parse_modifiers(event.mod))
                     on_keyup(name, modifiers)
+                if on_mousedown and event.type == MOUSEBUTTONDOWN:
+                    on_mousedown(event.button, event.pos)
+                if on_mouseup and event.type == MOUSEBUTTONUP:
+                    on_mouseup(event.button, event.pos)
+                if on_mousemotion and event.type == MOUSEMOTION:
+                    on_mousemotion(event.pos, event.rel)
 
     def clear(self, color=rgba(255,255,255)):
         glClearColor(*color.vec4)
