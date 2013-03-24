@@ -6,32 +6,72 @@
 from argon import Argon, rgba, graphics, hsva
 from time import time
 from math import sin, cos
-from colorpicker import Colorpicker
-argon = Argon()
+#from colorpicker import Colorpicker
+from richtext import Paragraph
+argon = Argon((854, 480))#(640, 480))
 background_color = rgba(0x24, 0x24, 0x24)
 white      = rgba(255,255,255)
 black      = rgba(0,0,0)
+gray       = rgba(0x99, 0x96, 0x8b)
 
-picker = Colorpicker(argon)
-picker.left = 100
-picker.top  = 100
+font = argon.font("font/AnonymousPro_17")
+
+text = """\
+By using a dynamic programming algorithm to choose \
+the positions at which to break the line, instead \
+of choosing breaks greedily, the solution with \
+minimum raggedness may be found in time O(n2), \
+where n is the number of words in the input text. \
+Typically, the cost function for this technique \
+should be modified so that it does not count the \
+space left on the final line of a paragraph; this \
+modification allows a paragraph to end in the middle \
+of a line without penalty. It is also possible to \
+apply the same dynamic programming technique to \
+minimize more complex cost functions that combine \
+other factors such as the number of lines or costs \
+for hyphenating long words. Faster but more \
+complicated linear time algorithms are also \
+known for the minimum raggedness problem, and \
+for some other cost functions that have similar \
+properties"""
+par = Paragraph(font, text, [])
+par.left = 100
+par.top  = 100
+par.width = 400
+
+import screencast
+frameset = screencast.Frameset(argon.resolution)
+frameset.frameskip = 4
+frameset.fullcount = 0
 
 def on_frame():
     argon.clear(background_color)
-    picker.render(argon)
+    par.render(argon)
+
+    pos = 0.0, argon.resolution[1] - font.height + font.baseline
+    if argon.avg_latency > 0:
+        lat = 1000 * argon.avg_latency, 1.0 / argon.avg_latency
+        argon.render([(pos, "%.2fms %.1ffps" % lat, gray, font)])
+
+    if frameset.fullcount % frameset.frameskip == 0:
+        frameset.capture(argon)
+    frameset.fullcount += 1
 
 def on_keydown(name, mod, text):
     if name == 'escape':
+        frameset.save('screencast.webm')
         argon.done = True
+    par.keydown(name, mod, text)
 
 def on_mousedown(button, pos):
-    picker.mousedown(button, pos)
+    par.mousedown(button, pos)
 
 def on_mouseup(button, pos):
-    picker.mouseup(button, pos)
+    par.mouseup(button, pos)
 
 def on_mousemotion(pos, vel):
-    picker.mousemotion(pos, vel)
+    par.mousemotion(pos, vel)
 
 argon.run(on_frame, on_keydown, None, on_mousedown, on_mouseup, on_mousemotion)
 
@@ -51,7 +91,6 @@ argon.run(on_frame, on_keydown, None, on_mousedown, on_mouseup, on_mousemotion)
 #blue = rgba(0, 0, 255)
 #border = argon.patch9("border.png")
 #block = argon.patch9("block.png")
-#font = argon.font("font/AnonymousPro_17")
 #
 #hues = argon.image("hue-saturation-360x256.png")
 #h = 120

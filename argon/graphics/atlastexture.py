@@ -1,11 +1,10 @@
 from atlas import Allocator, OutOfArea
+from texture import Texture
 from OpenGL.GL import *
 
-class AtlasTexture(object):
+class AtlasTexture(Texture):
     def __init__(self, texture, width, height):
-        self.texture = texture
-        self.width   = width
-        self.height  = height
+        Texture.__init__(self, texture, width, height)
         self.allocator = Allocator()
 
     @classmethod
@@ -13,12 +12,6 @@ class AtlasTexture(object):
         atlas = cls(glGenTextures(1), width, height)
         atlas.clear()
         return atlas
-
-    def bind(self):
-        glBindTexture(GL_TEXTURE_2D, self.texture)
-
-    def unbind(self):
-        glBindTexture(GL_TEXTURE_2D, 0)
 
     def add(self, image):
         item = self.allocator.add(image.width, image.height)

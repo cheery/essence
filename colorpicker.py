@@ -1,36 +1,7 @@
 from argon import hsva, rgba
+from box import Box
 white = rgba(255,255,255)
 black = rgba(0,0,0)
-
-def clamp(low, high, value):
-    return min(high, max(low, value))
-
-class Box(object):
-    def __init__(self, left=0, top=0, width=0, height=0):
-        self.left   = left
-        self.top    = top
-        self.width  = width
-        self.height = height
-
-    @property
-    def rect(self):
-        return (self.left, self.top, self.width, self.height)
-
-    def point_inside(self, (x,y)):
-        dx = x - self.left
-        dy = y - self.top
-        return 0 <= dx < self.width and 0 <= dy < self.height
-
-    def point_interval(self, (x,y)):
-        dx = x - self.left
-        dy = y - self.top
-        return (
-            clamp(0, 1, dx / (self.width-1.0)),
-            clamp(0, 1, dy / (self.height-1.0)),
-        )
-
-    def interpolate(self, (i,j)):
-        return self.left + self.width * i, self.top + self.height * j
 
 class Colorpicker(Box):
     def __init__(self, argon):

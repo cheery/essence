@@ -23,3 +23,9 @@ class Buffer(object):
 
     def uploadList(self, data, usage=None):
         self.upload(array('f', data), usage)
+
+    def map(self, access=GL_READ_ONLY):
+        return glMapBuffer(self.type, self.access)
+
+    def unmap(self):
+        glUnmapBuffer(self.type)

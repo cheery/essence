@@ -78,9 +78,9 @@ class vec4(object):
         return vec4(self.x/scalar, self.y/scalar, self.z/scalar, self.w/scalar)
 
 class Argon(object):
-    def __init__(self):
+    def __init__(self, resolution=(1200,1000)):
         self.flags = HWSURFACE | OPENGL | DOUBLEBUF
-        self.resolution = 1200, 1000
+        self.resolution = resolution
         self.done = False
         pygame.display.set_mode(self.resolution, self.flags)
         glEnable(GL_TEXTURE_2D)
@@ -92,6 +92,7 @@ class Argon(object):
         self.paths = [in_module('assets'), os.getcwd(), '.']
         self.cache = {}
         self.plain = graphics.Image(4,4, '\xff'*64)
+        self.avg_latency = 0
 
     def image(self, path):
         if path in self.cache:
@@ -121,9 +122,9 @@ class Argon(object):
             pygame.display.flip()
             now = time.time()
             latencies.append(now - frame_begin)
-#            if len(latencies) >= 100:
-#                print "%6.2fms" % (1000 * sum(latencies) / len(latencies))
-#                latencies = []
+            if len(latencies) >= 100:
+                latencies.pop(0)
+            self.avg_latency = sum(latencies) / len(latencies)
             for event in pygame.event.get():
                 if event.type == QUIT:
                     self.done = True
@@ -145,6 +146,31 @@ class Argon(object):
     def clear(self, color=rgba(255,255,255)):
         glClearColor(*color.vec4)
         glClear(GL_COLOR_BUFFER_BIT)
+
+    def render_with_texture(self, (left, top, width, height), texture):
+        right  = left + width
+        bottom = top  + height
+        self.buf.uploadList([
+            left,  top,    0.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+            left,  bottom, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+            right, top,    1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+            right, top,    1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+            left,  bottom, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+            right, bottom, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        ])
+        prg = self.ui
+        prg.use()
+        prg.uniform2f('resolution', self.resolution)
+        self.buf.bind()
+        texture.bind()
+        prg.setPointer("position", 2, GL_FLOAT, stride=8*4, offset=0*4)
+        prg.setPointer("texcoord", 2, GL_FLOAT, stride=8*4, offset=2*4)
+        prg.setPointer("color",    4, GL_FLOAT, stride=8*4, offset=4*4)
+        glDrawArrays(GL_TRIANGLES, 0, 6)
+        prg.disablePointers(("position", "texcoord", "color"))
+        self.buf.unbind()
+        texture.unbind()
+        prg.enduse()
 
     def render(self, quads):
         sampler = atlas_sampler(self.atlas, quads)
