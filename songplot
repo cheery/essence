@@ -1,0 +1,254 @@
+#!/usr/bin/env python
+"""
+    argon
+    ~~~~~
+"""
+from argon import Argon, rgba, graphics, hsva
+from time import time
+from math import sin, cos
+#from colorpicker import Colorpicker
+from richtext import Paragraph
+#argon = Argon((854, 480))#(640, 480))
+argon = Argon((400, 300))#(640, 480))
+background_color = rgba(0x24, 0x24, 0x24)
+white      = rgba(255,255,255)
+black      = rgba(0,0,0)
+gray       = rgba(0x99, 0x96, 0x8b)
+whiteish   = rgba(0xf6, 0xf3, 0xe8)
+
+treble = argon.image('treble.png')
+bass   = argon.image('bass.png')
+
+notes  = [argon.image('note%i.png' % i) for i in (1,2,4,8,16)]
+
+song = [
+]
+
+newnote = [None, 0]
+
+keymap = {
+    'c': 60,
+    'd': 60+2,
+    'e': 60+4,
+    'f': 60+5,
+    'g': 60+7,
+    'a': 60+9,
+    'b': 60+11,
+
+    '1': 72,
+    '2': 72+2,
+    '3': 72+4,
+    '4': 72+5,
+    '5': 72+7,
+    '6': 72+9,
+    '7': 72+11,
+}
+
+g_mapping = {
+    83:  -5, #B
+    81:   0, #A
+    79:   5, #G
+    77:  10, #F
+    76:  15, #E
+    74:  20, #D
+    72:  25, #C
+
+    71:  30, #B
+    69:  35, #A
+    67:  40, #G
+    65:  45, #F
+    64:  50, #E
+    62:  55, #D
+    60:  60, #C
+}
+def plot_notes(g_top=70):
+    for i, (pitch, duration) in enumerate(song):
+        note = notes[duration]
+        offset = g_mapping[pitch]
+        rect = (80+i*30-5, g_top + offset-note.height-4, note.width, note.height)
+        yield (rect, whiteish, note)
+
+def stroke(pitch):
+    newnote[0] = [pitch, 4]
+    newnote[1] = time()
+    song.append(newnote[0])
+
+font = argon.font("font/AnonymousPro_17")
+
+mouse = [0,0]
+
+def on_frame():
+    now = time()
+    speed = 1.5
+    if newnote[0]:
+        delta = now - newnote[1]
+        if delta > speed / 16.0:
+            newnote[0][1] = 3
+        if delta > speed / 8.0:
+            newnote[0][1] = 2
+        if delta >= speed / 4.0:
+            newnote[0][1] = 1
+        if delta >= speed / 2.0:
+            newnote[0][1] = 0
+        if delta >= speed:
+            stroke(newnote[0][0])
+
+    argon.clear(background_color)
+    dx, dy = mouse
+
+    argon.render([
+        ((0, 70, 400, 1), whiteish, argon.plain),
+        ((0, 80, 400, 1), whiteish, argon.plain),
+        ((0, 90, 400, 1), whiteish, argon.plain),
+        ((0,100, 400, 1), whiteish, argon.plain), # G
+        ((0,110, 400, 1), whiteish, argon.plain),
+
+        ((50-15, 100-42, treble.width, treble.height), whiteish, treble),
+
+        #((0, 120, 400, 1), gray, argon.plain),
+        #((0, 140, 400, 1), gray, argon.plain),
+
+        ((0,150, 400, 1), whiteish, argon.plain),
+        ((0,160, 400, 1), whiteish, argon.plain), # F
+        ((0,170, 400, 1), whiteish, argon.plain),
+        ((0,180, 400, 1), whiteish, argon.plain),
+        ((0,190, 400, 1), whiteish, argon.plain),
+        ((50-21, 160-10, bass.width, bass.height), whiteish, bass),
+
+        ((0, font.baseline), "%+i %+i" % tuple(mouse), whiteish, font),
+    ] + list(plot_notes())
+#    ] + [
+#        ((80+30*n-5, 85-note.height-4, note.width, note.height), whiteish, note)
+#        for n, note in enumerate(notes)
+#    ] + [
+#        ((80+30*n-5,190-note.height-4, note.width, note.height), whiteish, note)
+#        for n, note in enumerate(notes)
+    )
+
+def on_keydown(name, mod, text):
+    if name == 'escape':
+        frameset.save('screencast.webm')
+        argon.done = True
+    if text in keymap:
+        stroke(keymap[text])
+    pass#par.keydown(name, mod, text)
+
+def on_keyup(name, mod):
+    newnote[0] = None
+
+def on_mousedown(button, pos):
+    pass#par.mousedown(button, pos)
+
+def on_mouseup(button, pos):
+    pass#par.mouseup(button, pos)
+
+def on_mousemotion(pos, vel):
+    mouse[0] = pos[0]
+    mouse[1] = pos[1]
+    pass#par.mousemotion(pos, vel)
+
+argon.run(on_frame, on_keydown, on_keyup, on_mousedown, on_mouseup, on_mousemotion)
+
+
+#    par.render(argon)
+
+#    pos = 0.0, argon.resolution[1] - font.height + font.baseline
+#    if argon.avg_latency > 0:
+#        lat = 1000 * argon.avg_latency, 1.0 / argon.avg_latency
+#        argon.render([(pos, "%.2fms %.1ffps" % lat, gray, font)])
+#
+#    if frameset.fullcount % frameset.frameskip == 0:
+#        frameset.capture(argon)
+#    frameset.fullcount += 1
+#text = """\
+#By using a dynamic programming algorithm to choose \
+#the positions at which to break the line, instead \
+#of choosing breaks greedily, the solution with \
+#minimum raggedness may be found in time O(n2), \
+#where n is the number of words in the input text. \
+#Typically, the cost function for this technique \
+#should be modified so that it does not count the \
+#space left on the final line of a paragraph; this \
+#modification allows a paragraph to end in the middle \
+#of a line without penalty. It is also possible to \
+#apply the same dynamic programming technique to \
+#minimize more complex cost functions that combine \
+#other factors such as the number of lines or costs \
+#for hyphenating long words. Faster but more \
+#complicated linear time algorithms are also \
+#known for the minimum raggedness problem, and \
+#for some other cost functions that have similar \
+#properties"""
+#par = Paragraph(font, text, [])
+#par.left = 100
+#par.top  = 100
+#par.width = 400
+#
+#import screencast
+#frameset = screencast.Frameset(argon.resolution)
+#frameset.frameskip = 4
+#frameset.fullcount = 0
+
+#tr50       = rgba(0xFF, 0xFF, 0xFF, 0x80)
+#tr50b      = rgba(0x28, 0x28, 0x28, 0x80)
+#green      = rgba(0x95, 0xe4, 0x54)
+#cyan       = rgba(0x8a, 0xc6, 0xf2)
+#red        = rgba(0xe5, 0x78, 0x6d)
+#lime       = rgba(0xca, 0xe6, 0x82)
+#gray       = rgba(0x99, 0x96, 0x8b)
+#back       = rgba(0x24, 0x24, 0x24)
+#whiteish   = rgba(0xf6, 0xf3, 0xe8)
+#background = rgba(0x24, 0x24, 0x24)
+#
+#red = rgba(255, 0, 0)
+#green = rgba(0, 255, 0)
+#blue = rgba(0, 0, 255)
+#border = argon.patch9("border.png")
+#block = argon.patch9("block.png")
+#
+#hues = argon.image("hue-saturation-360x256.png")
+#h = 120
+#
+#def on_frame():
+#    v = sin(time())/2.0 + 0.5
+#    s0, s1 = 0.0, 1.0
+##    c0 = v * (1-s0)
+##    c1 = v * (1-s1)
+#    v *= 255
+#    r0 = rgba(v, 0, 0)
+#    r1 = rgba(v, v, 0)
+#    r2 = rgba(0, v, 0)
+#    r3 = rgba(0, v, v)
+#    r4 = rgba(0, 0, v)
+#    r5 = rgba(v ,0, v)
+#    r6 = rgba(v ,0, v)
+#    r7 = rgba(v ,v, v)
+#
+#    argon.clear(background_color)
+#    argon.render([
+#        ((10,  10,  500, 500), (red, green, blue, red), border),
+#        ((50,  50,  200, 200), red, border),
+#        ((100, 100, 200, 200), green, border),
+#        ((150, 150, 200, 200), blue, border),
+#        ((10, 400, 200, font.height*1.2), gray, border),
+#        ((20, 400+font.baseline), "hello Jjason", whiteish, font),
+#
+#        ((60-10, 500-10, 510+20, 256+20), black, block),
+#
+#        ((60, 500, 360, 256), rgba(255,255,255,255), hues),
+#        ((360+60, 500, 30, 256), (red,red,black,black), argon.plain),
+#        ((360+90, 500, 120, 256), rgba(255,0,0), argon.plain),
+#
+#        ((60-8, 500-8+256, 16, 16), white, border),
+#        ((60+360, 500-8, 30, 16), white, border),
+#        # color bar
+#    ])
+#
+#
+#def on_mousedown(button, pos):
+#    pass
+#
+#def on_mousemotion(pos, vel):
+#    print pos
+#
+#argon.run(on_frame, on_keydown, None, on_mousedown, None, on_mousemotion)

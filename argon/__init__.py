@@ -132,7 +132,7 @@ class Argon(object):
                     name = keyboard.bindings.get(event.key, None)
                     modifiers = frozenset(keyboard.parse_modifiers(event.mod))
                     on_keydown(name, modifiers, event.unicode)
-                if on_keyup and event.type == KEYDOWN:
+                if on_keyup and event.type == KEYUP:
                     name = keyboard.bindings.get(event.key, None)
                     modifiers = frozenset(keyboard.parse_modifiers(event.mod))
                     on_keyup(name, modifiers)
