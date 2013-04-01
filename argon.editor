@@ -5,22 +5,63 @@
 """
 from argon import Argon, rgba, graphics, hsva
 import layout
+from document import ListField, TextField
+from language import unknown
+
+example = ListField([
+    ListField([None, None, None], 'function'),
+    ListField([
+        TextField("kakka", "variable"), None, ListField([], "statement*")
+    ], 'function'),
+    TextField("arbitrary string", 'string'),
+], 'statement*')
 
 def build_render_list(out, node):
     back  = node.style['background']
-    color = node.style['color']
+    bg_color = color = node.style['color']
+    if isinstance(back, tuple):
+        back, bg_color = back
     if back:
-        out.append((node.rect, color, back))
+        out.append((node.rect, bg_color, back))
     if isinstance(node, layout.Label):
         font = node.style['font']
-        out.append((node.baseline_pos, str(node.source), color, font))
+        out.append((node.baseline_pos, node.text, color, font))
     for child in node:
         out = build_render_list(out, child)
     return out
 
+
 class Slate(layout.Box):
     def __init__(self, (width, height), style):
         layout.Box.__init__(self, (0,0,width,height), style)
+
+class DefaultMode(object):
+    def __init__(self, root):
+        self.root = root
+
+    def draw(self, argon):
+        font = self.root.font
+        width, height = argon.resolution
+        argon.render([
+            ((0,0,width,font.height*1.2), rgba(0,0,0), argon.plain),
+            ((0,font.baseline), "-- escape --", rgba(0x80, 0x80, 0x80), font),
+        ])
+
+    def on_keydown(self, name, mod, text):
+        if name == 'escape':
+            argon.done = True
+
+    def on_keyup(self, name, mod):
+        pass
+
+    def on_mousedown(self, button, pos):
+        self.root.pick(pos)
+
+    def on_mouseup(self, button, pos):
+        pass
+
+    def on_mousemotion(self, pos, vel):
+        pass
 
 class Root(object):
     def __init__(self, node, (left, top), style):
@@ -30,6 +71,11 @@ class Root(object):
         self.width  = 0
         self.height = 0
         self.style = style
+        self.start = self.stop = 0
+        self.defaultmode = DefaultMode(self)
+        self.font = argon.font("font/AnonymousPro_17")
+        self.reset()
+        self.node.control.enter_head(self, self.node)
 
     def update(self):
         self.node.measure(self)
@@ -47,6 +93,34 @@ class Root(object):
     def draw(self, argon):
         out = build_render_list([], self)
         argon.render(out)
+        self.control.draw(argon)
+
+        #rect = pad(self.picked.rect, (7,7,7,7))
+        #out.extend([
+        #    (rect, whiteish, argon.patch9('marker.png')),
+        #])
+        #if isinstance(self.picked.source, ListField):
+        #    for intron in self.picked.subintrons():
+        #        if intron.in_range(self.start, self.stop):
+        #            rect = intron.selection_rect(self.start, self.stop)
+        #            out.append((rect, whiteish, argon.plain))
+
+    def reset(self):
+        self.control = self.defaultmode
+
+    def pick(self, pos):
+        for intron in reversed(self.node.pick(pos)):
+            if intron.control is None:
+                continue
+            if intron.control.enter_click(self, intron, pos):
+                return
+        self.reset()
+
+    def find_parent(self, intron):
+        parent = None
+        for parent in self.node.find_context(intron.source):
+            pass
+        return parent
 
 argon = Argon((1200, 1000))
 
@@ -59,34 +133,66 @@ gray       = rgba(0x99, 0x96, 0x8b)
 back       = rgba(0x24, 0x24, 0x24)
 whiteish   = rgba(0xf6, 0xf3, 0xe8)
 
-default = layout.default.inherit(
-    background = argon.patch9("border.png"),
-    color = whiteish,
-    padding = (2,2,2,2),
-)
+font = argon.font("font/AnonymousPro_17")
 
-textdefault = default.inherit(
-    background = None,
-    padding = (0,0,0,0),
-    font = argon.font("font/AnonymousPro_17"),
-)
+#default = layout.default.inherit(
+#    background = argon.patch9("border.png"),
+#    color = whiteish,
+#    padding = (2,2,2,2),
+#)
+#
+#textdefault = default.inherit(
+#    background = None,
+#    padding = (0,0,0,0),
+#    font = argon.font("font/AnonymousPro_17"),
+#)
+#
+#slate11 = layout.Label("hello there", textdefault)
+#slate12 = layout.Label("We are somewhat ready", textdefault)
+#slate13 = layout.Label("are you?", textdefault)
+#column = layout.Column([slate11, slate12, slate13], default.inherit(color=cyan))
+#slate2 = Slate((100, 300), default)
+#slate3 = layout.Label("Ready yourself!", textdefault)
+#row = layout.Row([column,slate2,slate3], default)
+#box1 = Root(row, (50, 40), default.inherit(color=lime))
 
-slate11 = layout.Label("hello there", textdefault)
-slate12 = layout.Label("We are somewhat ready", textdefault)
-slate13 = layout.Label("are you?", textdefault)
-column = layout.Column([slate11, slate12, slate13], default.inherit(color=cyan))
-slate2 = Slate((100, 300), default)
-slate3 = layout.Label("Ready yourself!", textdefault)
-row = layout.Row([column,slate2,slate3], default)
-box1 = Root(row, (50, 40), default.inherit(color=lime))
+root = Root(unknown.build(argon, font, example), (50, 50), layout.default.inherit(
+    background = argon.patch9('border.png'),
+    color      = rgba(0x40, 0x40, 0x40),
+    #color = rgba(0x30, 0x30, 0x30)
+))
+
+mousemarker = [0,0, rgba(0xff,0xff,0x80,0x5), argon.image('circle64.png')]
 
 def on_frame():
     argon.clear(background_color)
-    box1.update()
-    box1.draw(argon)
+    root.update()
+    root.draw(argon)
+
+    x,y,c,img = mousemarker
+    w,h = argon.resolution
+    argon.render([
+        ((x-img.width/2,y-img.height/2,img.width,img.height), c, img),
+        ((0, h-font.height*1.2+font.baseline), "%.2fms" % (1000*argon.avg_latency), whiteish, font),
+    ])
+#    box1.update()
+#    box1.draw(argon)
 
 def on_keydown(name, mod, text):
-    if name == 'escape':
-        argon.done = True
+    root.control.on_keydown(name, mod, text)
 
-argon.run(on_frame, on_keydown)
+def on_keyup(name, mod):
+    root.control.on_keyup(name, mod)
+
+def on_mousedown(button, pos):
+    root.control.on_mousedown(button, pos)
+
+def on_mouseup(button, pos):
+    root.control.on_mouseup(button, pos)
+
+def on_mousemotion(pos, vel):
+    root.control.on_mousemotion(pos, vel)
+    mousemarker[0] = pos[0]
+    mousemarker[1] = pos[1]
+
+argon.run(on_frame, on_keydown, on_keyup, on_mousedown, on_mouseup, on_mousemotion)

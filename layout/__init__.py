@@ -5,6 +5,7 @@ from align import Align
 from flow import AlignByFlow
 from config import Config
 from label import Label
+from intron import Intron
 import flow
 
 default = Config(None, dict(

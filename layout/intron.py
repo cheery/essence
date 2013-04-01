@@ -1,8 +1,37 @@
+from box import Box
+from label import Label
+
+def clamp(low, high, value):
+    return min(high, max(low, value))
+
+def pickbox(node, pos, hits):
+    if isinstance(node, Intron):
+        return node.pick(pos, hits)
+    for subnode in node:
+        hits = pickbox(subnode, pos, hits)
+    return hits
+
+def subintrons(node, out):
+    if isinstance(node, Intron):
+        out.append(node)
+    else:
+        for subnode in node:
+            out = subintrons(subnode, out)
+    return out
+
+def labels(node, out):
+    if isinstance(node, Label):
+        out.append(node)
+    for subnode in node:
+        out = labels(subnode, out)
+    return out
+
 class Intron(Box):
-    def __init__(self, source, generator, control=None):
+    def __init__(self, source, generator, control=None, index=None):
         self.source    = source
         self.generator = generator
         self.control   = control
+        self.index     = index
         self.rebuild()
 
     def rebuild(self):
@@ -34,27 +63,33 @@ class Intron(Box):
         y = self.top  + top  + (inner_height - self.node.height)*0.5
         self.node.arrange(self, (x,y))
 
-#    def pick(self, (x,y), hits=None):
-#        if hits == None:
-#            hits = []
-#        if 0 <= x - self.left < self.width and 0 <= y - self.top < self.height:
-#            hits.append(self)
-#        return self.node.pick((x,y), hits)
-#
-#    def subintrons(self, res=None):
-#        if res == None:
-#            return self.node.subintrons([])
-#        else:
-#            res.append(self)
-#            return res
-#
-#    def find_context(self, intron):
-#        if intron == self:
-#            return ()
-#        for subintron in self.subintrons():
-#            match = subintron.find_context(intron)
-#            if match is not None:
-#                return (self,) + match
+    def pick(self, pos, hits=None):
+        hits = [] if hits is None else hits
+        if self.inside(pos):
+            hits.append(self)
+        for subnode in self:
+            hits = pickbox(subnode, pos, hits)
+        return hits
+
+    def subintrons(self, out=None):
+        out = [] if out is None else out
+        for subnode in self:
+            out = subintrons(subnode, out)
+        return out
+
+    def labels(self, out=None):
+        out = [] if out is None else out
+        for subnode in self:
+            out = labels(subnode, out)
+        return out
+
+    def find_context(self, source):
+        if source == self.source:
+            return ()
+        for subintron in self.subintrons():
+            match = subintron.find_context(source)
+            if match is not None:
+                return (self,) + match
 #
 #    def traverse(self, res, cond):
 #        if cond(self):
@@ -62,8 +97,8 @@ class Intron(Box):
 #        return self.node.traverse(res, cond)
 #
     def selection_rect(self, start, stop):
-        x0 = (0, self.width)[start]
-        x1 = (0, self.width)[stop]
+        x0 = (0, self.width)[min(1,max(0, start - self.index))]
+        x1 = (0, self.width)[min(1,max(0, stop  - self.index))]
         return (self.left + x0 - 1, self.top, x1-x0 +2, self.height)
 
     def scan_offset(self, (x,y)):
@@ -78,3 +113,30 @@ class Intron(Box):
             return self.index, b
         else:
             return self.index+1, b
+
+    def in_range(self, start, stop):
+        x0 = self.index
+        x1 = self.index + 1
+        return start <= x1 and stop >= x0
+
+    def pick_offset(self, pos):
+        k = 0
+        best = None
+        for intron in self.subintrons():
+            if intron.index is None:
+                continue
+            i, v = intron.scan_offset(pos)
+            if v <= best or best is None:
+                k = i
+                best = v
+        for label in self.labels():
+            if label.source is not self.source:
+                continue
+            i, v = label.scan_offset(pos)
+            if v <= best or best is None:
+                k = i
+                best = v
+        return k
+
+    def __iter__(self):
+        return iter((self.node,))
