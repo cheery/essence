@@ -90,6 +90,14 @@ class Intron(Box):
             match = subintron.find_context(source)
             if match is not None:
                 return (self,) + match
+
+    def find(self, source):
+        if self.source == source:
+            return self
+        for subintron in self.subintrons():
+            match = subintron.find(source)
+            if match is not None:
+                return match
 #
 #    def traverse(self, res, cond):
 #        if cond(self):

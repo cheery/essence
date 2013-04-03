@@ -5,7 +5,7 @@
 """
 from argon import Argon, rgba, graphics, hsva
 import layout
-from document import ListField, TextField
+from document import ListField, TextField, flat
 from language import unknown
 
 example = ListField([
@@ -14,7 +14,10 @@ example = ListField([
         TextField("kakka", "variable"), None, ListField([], "statement*")
     ], 'function'),
     TextField("arbitrary string", 'string'),
-], 'statement*')
+], 'language=crocodile*')
+
+flat.save_file('example.flat', example)
+example = flat.load_file('example.flat')
 
 def build_render_list(out, node):
     back  = node.style['background']
@@ -115,6 +118,9 @@ class Root(object):
             if intron.control.enter_click(self, intron, pos):
                 return
         self.reset()
+
+    def find_intron(self, field):
+        return self.node.find(field)
 
     def find_parent(self, intron):
         parent = None

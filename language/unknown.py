@@ -2,6 +2,83 @@ from argon import rgba, graphics, hsva
 import layout
 from document import ListField, TextField
 from weakref import WeakKeyDictionary
+import grammar
+
+language = grammar.Language([
+    grammar.Group('language=crocodile', ('call', 'def')),
+    grammar.Group('expression', ('var', 'call', 'number', 'string')),
+    grammar.Symbolic('call', ('expression', 'expression*')),
+    grammar.Symbolic('def', ('var', 'var*', 'language=crocodile*')),
+    grammar.Data('var', 'text'),
+    grammar.Data('number', 'text'),
+    grammar.Data('string', 'text'),
+], root='language=crocodile*')
+
+def text_match(character):
+    def condition(key, mod, text):
+        return text == character
+    return condition
+
+constructor_bindings = [
+    ('call', text_match('('), 0),
+    ('def',  text_match('{'), 0),
+    ('var',  lambda key, mod, text: text and (text.isalpha() or text == '_'), 0),
+    ('number', lambda key, mod, text: text and (text.isdigit() or text in 'abcdef'), 1),
+    ('string', text_match('"'), 0),
+]
+
+def build_from_grammar(name):
+    t = language[name]
+    if isinstance(t, grammar.Symbolic):
+        lst = []
+        for subname in t.fields:
+            if subname.endswith('*'):
+                lst.append(ListField([], subname))
+            else:
+                lst.append(None)
+        return ListField(lst, name)
+    if isinstance(t, grammar.Data) and t.which == 'text':
+        return TextField("", name)
+    raise Exception("%r cannot be buildt" % name)
+
+## I cannot use this, because the selection is bound too hard on the input mode.
+## I need to reintroduce selection.
+# hmm.. or maybe not.
+def attempt_construct((field, index), key, mod, text):
+    if isinstance(field, TextField):
+        return False, None
+    best = None
+    treshold = None
+    if not field.name in language:
+        return False, None
+    current_distances = language.get_distances(field.name)
+    for name, condition, cost in constructor_bindings:
+        if condition(key, mod, text) and name in current_distances:
+            if best == None or cost + current_distances[name][0] < treshold:
+                best = name
+    if best != None:
+        while field.name != best:
+            nxt = language.get_distances(field.name)[best][1]
+            new_field = build_from_grammar(nxt)
+            if not field.name.endswith('*'):
+                field[index] = new_field
+                field = new_field
+            else:
+                field[index:index] = [new_field]
+                field = new_field
+            index = 0
+            if field.name != best:
+                if not field.name.endswith('*') and field[0] is not None:
+                    field = field[0]
+
+#            selection.replace([new_field])
+#            creep_inside(selection, new_field)
+        if isinstance(field, TextField):
+            field[:] = text
+            #selection.replace(text)
+        return True, field
+        #return True
+    return False, None
 
 def clamp(low, high, value):
     return min(high, max(low, value))
@@ -57,7 +134,14 @@ class TextInputMode(object):
         if name == 'escape':
             self.root.reset()
         if name == 'a' and 'ctrl' in mod:
-            try_select_all(self.root, self.intron)
+            if self.start == 0 and self.stop == len(self.intron.source):
+                try_select_all(self.root, self.intron)
+            else:
+                self.head = 0
+                self.tail = len(self.intron.source)
+#        elif name == 't' and 'ctrl' in mode:
+#            if self.intron.name == '
+#            try_eliminate(self.root, self.intron, 
         elif len(text) > 0 and 32 <= ord(text) < 127:
             self.intron.source[self.start:self.stop] = text
             self.head = self.tail = self.start + len(text)
@@ -69,13 +153,24 @@ class TextInputMode(object):
                 try_leave_head(self.root, self.intron)
             if 'shift' not in mod:
                 self.tail = self.head
-        if name == 'right':
+        if name == 'right' or name == 'return':
             if self.head < len(self.intron.source):
                 self.head += 1
             else:
                 try_leave_tail(self.root, self.intron)
             if 'shift' not in mod:
                 self.tail = self.head
+        if name == 'backspace':
+            if self.head != self.tail:
+                self.intron.source[self.start:self.stop] = ''
+                self.head = self.tail = self.start
+                self.intron.rebuild()
+            elif self.head == self.tail and self.head > 0:
+                self.intron.source[self.head-1:self.head] = ''
+                self.head = self.tail = self.head - 1
+                self.intron.rebuild()
+            elif self.head == 0 and len(self.intron.source) == 0:
+                try_eliminate(self.root, self.intron)
 
     def on_keyup(self, name, mod):
         pass
@@ -143,7 +238,7 @@ class StructInputMode(object):
                 self.try_enter_tail(self.which)
             else:
                 try_leave_head(self.root, self.intron)
-        if name == 'right':
+        if name == 'right' or name == 'return':
             if self.which < len(self.intron.source)-1:
                 self.which += 1
                 self.try_enter_head(self.which)
@@ -155,6 +250,18 @@ class StructInputMode(object):
         if name == 'down':
             if self.which < len(self.intron.source)-1:
                 self.which += 1
+        if name == 'backspace':
+            self.intron.source[self.which] = None
+            self.intron.rebuild()
+        captured, new_field = attempt_construct((self.intron.source, self.which), name, mod, text)
+        if captured:
+            self.intron.rebuild()
+            # Fix this for 'None' if you find it necessary. :] probably not.
+            subintron = self.intron.find(new_field)
+            if isinstance(new_field, TextField):
+                subintron.control.enter_tail(self.root, subintron)
+            else:
+                subintron.control.enter_head(self.root, subintron)
 
     def on_keyup(self, name, mod):
         pass
@@ -189,7 +296,7 @@ class StructInputMode(object):
     def enter_tail(cls, root, intron):
         length = len(intron.source) 
         if length > 0:
-            root.control = ctl = cls(root, intron, length)
+            root.control = ctl = cls(root, intron, length-1)
             ctl.try_enter_tail(length-1)
             return True
 
@@ -210,6 +317,14 @@ class StructInputMode(object):
             return True
         else:
             return try_leave_tail(root, intron)
+
+    @classmethod
+    def enter_child_eliminate(cls, root, intron, index, replacement=None):
+        intron.source[index] = replacement
+        intron.rebuild()
+        root.control = cls(root, intron, index)
+        self.try_enter_head(index)
+        return True
 
     @classmethod
     def enter_select(cls, root, intron, index):
@@ -260,7 +375,11 @@ class ListInputMode(object):
         if name == 'escape':
             self.root.reset()
         if name == 'a' and 'ctrl' in mod:
-            try_select_all(self.root, self.intron)
+            if self.start == 0 and self.stop == len(self.intron.source):
+                try_select_all(self.root, self.intron)
+            else:
+                self.head = 0
+                self.tail = len(self.intron.source)
         if name == 'left':
             if self.head > 0:
                 self.head -= 1
@@ -269,7 +388,7 @@ class ListInputMode(object):
                 try_leave_head(self.root, self.intron)
             if 'shift' not in mod:
                 self.tail = self.head
-        if name == 'right':
+        if name == 'right' or name == 'return':
             if self.head < len(self.intron.source):
                 self.try_enter_head(self.head)
                 self.head += 1
@@ -287,6 +406,26 @@ class ListInputMode(object):
                 self.head += 1
             if 'shift' not in mod:
                 self.tail = self.head
+        if name == 'backspace':
+            if self.head != self.tail:
+                self.intron.source[self.start:self.stop] = []
+                self.head = self.tail = self.start
+                self.intron.rebuild()
+            elif self.head == self.tail and self.head > 0:
+                self.intron.source[self.head-1:self.head] = []
+                self.head = self.tail = self.head - 1
+                self.intron.rebuild()
+            elif self.head == 0 and len(self.intron.source) == 0:
+                try_eliminate(self.root, self.intron)
+        captured, new_field = attempt_construct((self.intron.source, self.head), name, mod, text)
+        if captured:
+            self.intron.rebuild()
+            # Fix this for 'None' if you find it necessary. :] probably not.
+            subintron = self.intron.find(new_field)
+            if isinstance(new_field, TextField):
+                subintron.control.enter_tail(self.root, subintron)
+            else:
+                subintron.control.enter_head(self.root, subintron)
 
     def on_keyup(self, name, mod):
         pass
@@ -328,6 +467,15 @@ class ListInputMode(object):
         return True
 
     @classmethod
+    def enter_child_eliminate(cls, root, intron, index, replacement=None):
+        intron.source[index:index+1] = [] if replacement is None else [replacement]
+        intron.rebuild()
+        root.control = cls(root, intron, index, index)
+        if replacement is not None:
+            self.try_enter_head(index)
+        return True
+
+    @classmethod
     def enter_select(cls, root, intron, index):
         root.control = cls(root, intron, index, index+1)
         return True
@@ -353,6 +501,11 @@ def try_leave_tail(root, intron):
     parent = root.find_parent(intron)
     if parent is not None:
         return parent.control.enter_child_tail(root, parent, intron.index)
+
+def try_eliminate(root, intron, replacement=None):
+    parent = root.find_parent(intron)
+    if parent is not None:
+        return parent.control.enter_child_eliminate(root, parent, intron.index, replacement)
 
 def try_select_all(root, intron):
     parent = root.find_parent(intron)
