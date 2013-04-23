@@ -1,0 +1,15 @@
+Things to do:
+
+-># yank and tune layouter
+-># yank file format and readjust it
+
+- put in placeholder layouter
+- implement proxy tracer
+- implement mutator
+- implement tiledtext input schema and credit it's author
+- implement your input schema
+- bind layouter to the interpreter
+- provide macron layouter
+
+- add more things to do if needed
+- start working on the llvm-backed language...
