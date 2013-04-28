@@ -5,6 +5,8 @@ class TextureCache(object):
         self.cache = {}
 
     def get(self, image):
+        if isinstance(image, Texture):
+            return image
         if image in self.cache:
             return self.cache[image]
         else:

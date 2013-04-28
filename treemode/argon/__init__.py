@@ -9,6 +9,8 @@ from cache import Cache
 from texturecache import TextureCache
 from image import Image
 from patch9 import Patch9
+from texture import Texture
+from framebuffer import Framebuffer
 
 def in_module(path):
     return os.path.join(os.path.dirname(__file__), path)
@@ -50,7 +52,7 @@ def quad(stream, (left, top, width, height), (s0,t0,s1,t1), (tl,tr,bl,br)):
 class Argon(object):
     def __init__(self, resolution=(1200, 1000)):
         self.flags = HWSURFACE | OPENGL | DOUBLEBUF
-        self.resolution = resolution
+        self.resolution = self.last_resolution = resolution
         pygame.display.set_mode(self.resolution, self.flags)
         self.initgl()
         self.listeners = {}
@@ -63,10 +65,24 @@ class Argon(object):
         glEnable(GL_TEXTURE_2D)
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        self.program =program= Program.load(in_module('glsl/flat.glsl'))
-        program.use()
-        program.uniform2f('resolution', self.resolution)
+        self.program = Program.load(in_module('glsl/flat.glsl'))
+        self.program_ms = Program.load(in_module('glsl/flat_ms.glsl'))
+        self.use_program(self.resolution)
         self.stream = BufferStream(Vertex, GL_TRIANGLES)
+
+    def use_program(self, resolution=None, sample_count=0):
+        if resolution == None:
+            resolution = self.last_resolution
+        if sample_count > 0:
+            program = self.program_ms
+            program.use()
+            program.uniform2f('resolution', resolution)
+            program.uniform1i('sample_count', sample_count)
+        else:
+            program = self.program
+            program.use()
+            program.uniform2f('resolution', resolution)
+        glViewport(0,0,*resolution)
 
     def listen(self, fn):
         self.listeners[fn.__name__] = fn
@@ -107,6 +123,9 @@ class Argon(object):
         glClearColor(r/255.0, g/255.0, b/255.0, a/255.0)
         glClear(GL_COLOR_BUFFER_BIT)
 
+    def viewport(self, x, y, w, h):
+        glViewport(x,y,w,h)
+
     def render_rectangle(self, rect, image=None, color=rgba(255,255,255,255), gradient=None):
         image = self.image_empty if image is None else image
         if isinstance(image, Patch9):
@@ -123,7 +142,7 @@ class Argon(object):
         stream = self.stream
         stream.begin(self.program)
         if patch9 is None:
-            quad(stream, rect, (0,0,1,1), gradient)
+            quad(stream, rect, (0,1,1,0), gradient)
         else:
             quad(stream, *patch9.cell(rect, gradient, 0, 0))
             quad(stream, *patch9.cell(rect, gradient, 1, 0))

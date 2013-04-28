@@ -55,6 +55,11 @@ class Program(object):
         for name in names:
             self.disablePointer(name)
 
+    def uniform1i(self, name, x):
+        loc = self.loc(name)
+        if loc >= 0:
+            glUniform1i(loc, x)
+
     def uniform1f(self, name, x):
         loc = self.loc(name)
         if loc >= 0:

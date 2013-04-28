@@ -12,11 +12,15 @@
 """
 
 class Struct(object):
-    __slots__ = ('meta', 'data')
-    unshadow = ('meta', 'data', 'copy')
+    __slots__ = ('meta', 'data', 'proxy')
+    unshadow = ('meta', 'data', 'proxy', 'copy')
     def __init__(self, meta, data):
         self.meta = meta
         self.data = data
+        self.proxy = None
+
+    def __len__(self):
+        return len(self.data)
 
     def __iter__(self):
         return iter(self.data)
@@ -39,7 +43,7 @@ class Struct(object):
             super(Struct, self).__setattr__(name, value)
         else:
             index = self.meta.names.index(name)
-            self[index] = index
+            self[index] = value
 
     def copy(self):
         duplicate = []
@@ -75,6 +79,7 @@ class Meta(object):
 class Constant(object):
     def __init__(self, name):
         self.name = name
+        self.proxy = None
 
     def __str__(self):
         return self.name

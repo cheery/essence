@@ -3,11 +3,20 @@ Things to do:
 -># yank and tune layouter
 -># yank file format and readjust it
 
-- put in placeholder layouter
-- implement proxy tracer
-- implement mutator
-- implement tiledtext input schema and credit it's author
-- implement your input schema
+-># add multisample texture support just to notice you don't need it
+-># add framebuffer support since rendering everything all the time is slow.
+-># put in placeholder layouter
+-># implement nice frame system
+-># implement mutator
+-># implement proxy
+-># implement overlay function for selection.
+-># redesign intron, markers and offset retrieval.
+-># implement generic mode
+
+-> implement your input schema
+-> implement tiledtext input schema and credit it's author
+-> implement .mk_template and .autospawn
+
 - bind layouter to the interpreter
 - provide macron layouter
 

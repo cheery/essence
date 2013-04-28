@@ -11,12 +11,12 @@ macron_spec = LanguageSpec(u"macron", [
         Field(u"name", [String]),
     ]),
     Struct(u"call", [
-        Field(u"callee", [Ref("expr")]),
-        Field(u"arguments", [List([Ref("expr")])]),
+        Field(u"callee", [Ref(u"expr")]),
+        Field(u"arguments", [List([Ref(u"expr")])]),
     ]),
     Struct(u"lambda", [
-        Field(u"args", [List([Ref("variable")])]),
-        Field(u"body", [List([Ref("expr")])]),
+        Field(u"args", [List([Ref(u"variable")])]),
+        Field(u"body", [List([Ref(u"expr")])]),
     ]),
     Group(u"expr", [
         Ref(u"call"),
@@ -24,7 +24,7 @@ macron_spec = LanguageSpec(u"macron", [
         Ref(u"lambda"),
     ]),
     Struct(u"macron", [
-        Field(u"program", [List([Ref("expr")])]),
+        Field(u"program", [List([Ref(u"expr")])]),
     ])
 ])
 
