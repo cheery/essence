@@ -29,7 +29,7 @@ class Constructors(object):
       elif obj.type == Const:
         setattr(self, obj.name.title(), Constant(obj.name))
 
-language = Language('language', [
+language = Language(u'language', [
   Struct(u"ref", [
     Object(u"name", [String])
   ]),

@@ -7,6 +7,7 @@
 import proxy
 
 class Selection(object):
+  length = property(lambda self: len(self.struct[self.index]))
   def _get_start(self):
     if self.head < self.tail:
       return self.head
@@ -32,18 +33,18 @@ class Selection(object):
   stop = property(_get_stop, _set_stop)
 
 class DataSelection(Selection):
-  def __init__(self, struct, data_index, head, tail=None):
+  def __init__(self, struct, index, head, tail=None):
     self.struct = struct
-    self.data_index = data_index
+    self.index = index
     self.head = head
     self.tail = head if tail is None else tail
 
   def splice(self, start, stop, data):
-    immutable = self.struct[self.data_index]
+    immutable = self.struct[self.index]
     assert isinstance(immutable, data)
     assert isinstance(immutable, self.selectiontype)
     removed = immutable[start:stop]
-    self.struct[self.data_index] = immutable[:start] + data + immutable[stop:]
+    self.struct[self.index] = immutable[:start] + data + immutable[stop:]
     self.stop = self.start + len(data)
     return removed
 
@@ -54,17 +55,17 @@ class StringSelection(DataSelection):
   selectiontype = unicode
 
 class ListSelection(Selection):
-  def __init__(self, struct, list_index, head, tail=None):
+  def __init__(self, struct, index, head, tail=None):
     self.struct = struct
-    self.list_index = list_index
+    self.index = index
     self.head = head
     self.tail = head if tail is None else tail
 
   def splice(self, start, stop, data):
     assert isinstance(data, list)
-    assert isinstance(self.struct[self.list_index], list)
-    removed = self.struct[self.list_index][start:stop]
-    self.struct[self.list_index][start:stop] = data
-    proxy.reproxy_list(self.struct.proxy, self.list_index, data, self.start)
+    assert isinstance(self.struct[self.index], list)
+    removed = self.struct[self.index][start:stop]
+    self.struct[self.index][start:stop] = data
+    proxy.reproxy_list(self.struct.proxy, self.index, data, self.start)
     self.stop = self.start + len(data)
     return removed

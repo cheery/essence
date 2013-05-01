@@ -50,12 +50,16 @@ def mkroot(info, struct):
     reproxy(struct.proxy, index, obj)
   return struct.proxy
 
-def reproxy_list(parent, list_index, objects, start=0)
+def reproxy_list(parent, list_index, objects, start=0):
   """
   Reconstructs proxies for objects within a list, maybe when object location changes.
   """
-  for index, obj in enumerate(objects):
-    obj.proxy = ListProxy(parent, list_index, index)
+  for index, obj in enumerate(objects, start):
+    if isinstance(obj, Struct):
+        struct = obj
+        struct.proxy = ListProxy(parent, list_index, index)
+        for index, obj in enumerate(struct):
+            reproxy(struct.proxy, index, obj)
 
 def reproxy(parent, index, obj):
   """
