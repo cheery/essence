@@ -72,7 +72,7 @@ class Argon(object):
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         self.program = Program.load(in_module('glsl/flat.glsl'))
-        self.program_ms = Program.load(in_module('glsl/flat_ms.glsl'))
+#        self.program_ms = Program.load(in_module('glsl/flat_ms.glsl'))
         self.use_program(self.resolution)
         self.stream = BufferStream(Vertex, GL_TRIANGLES)
 

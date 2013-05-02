@@ -1,5 +1,3 @@
-    precision highp float;
-
 GL_VERTEX_SHADER:
     
     uniform vec2 resolution;
