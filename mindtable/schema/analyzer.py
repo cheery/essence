@@ -24,7 +24,7 @@ def extract(groups, ref, res):
     if isinstance(ref, Constant):
         res.append(ref)
     elif ref.name in groups:
-        for member in groups[name]:
+        for member in groups[ref.name]:
             extract(groups, member, res)
     else:
         res.append(ref.name)
@@ -98,6 +98,17 @@ def template_chains(inversion, target):
         unvisited.sort(key=lambda name: cost[name])
     for name, (_next, in_list) in path.items():
         yield name, (_next, in_list, cost[name])
+
+def build_all_chains(table, inv):
+    chains = dict((n, {}) for n in table)
+    for name, edge in template_chains(inv, String):
+        chains[name][String] = edge
+    for name, edge in template_chains(inv, Buffer):
+        chains[name][Buffer] = edge
+    for target in table:
+        for name, edge in template_chains(inv, target):
+            chains[name][target] = edge
+    return chains
 
 #######
 #

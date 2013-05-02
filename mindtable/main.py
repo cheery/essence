@@ -5,118 +5,13 @@ from schema import proxy, analyzer
 from schema.mutator import Mutator
 from schema.selection import Selection, BufferSelection, StringSelection, ListSelection
 from schema.language import language, Synthetizer
+from schema.flatfile import load_file, save_file
+from navigation import *
 import layout
+import os, sys
 
-def roll(document, path):
-    current = document
-    for index in path:
-        if index >= len(current):
-            raise Exception("something fukked up")
-        current = current[index]
-    return current
-
-def select_this(struct):
-    if isinstance(struct.proxy, proxy.StructProxy):
-        parent = roll(document, struct.proxy.parent.unroll()[1])
-        return Mutator(parent, struct.proxy.index)
-    elif isinstance(struct.proxy, proxy.ListProxy):
-        parent = roll(document, struct.proxy.parent.unroll()[1])
-        return ListSelection(parent, struct.proxy.list_index, struct.proxy.index+1, struct.proxy.index)
-
-def wade_to_previous(sel):
-    if isinstance(sel, ListSelection) and sel.head > 0:
-        obj = sel.struct[sel.index][sel.head - 1]
-        if isinstance(obj, Struct):
-            return climb_tail(obj, len(obj) - 1)
-        else:
-            return sel.__class__(sel.struct, sel.index, sel.head - 1)
-    else:
-        return skip_to_previous(sel.struct, sel.index)
-
-def wade_to_next(sel):
-    if isinstance(sel, ListSelection) and sel.head < sel.length:
-        obj = sel.struct[sel.index][sel.head]
-        if isinstance(obj, Struct):
-            return climb_head(obj, 0)
-        else:
-            return sel.__class__(sel.struct, sel.index, sel.head + 1)
-    else:
-        return skip_to_next(sel.struct, sel.index)
-
-def skip_to_previous(struct, index):
-    if index > 0:
-        return climb_tail(struct, index - 1)
-    elif isinstance(struct.proxy, proxy.StructProxy):
-        parent = roll(document, struct.proxy.parent.unroll()[1])
-        return skip_to_previous(parent, struct.proxy.index)
-    elif isinstance(struct.proxy, proxy.ListProxy):
-        parent = roll(document, struct.proxy.parent.unroll()[1])
-        return ListSelection(parent, struct.proxy.list_index, struct.proxy.index)
-    assert(struct.proxy is not None)
-
-def skip_to_next(struct, index):
-    if index + 1 < len(struct):
-        return climb_head(struct, index + 1)
-    elif isinstance(struct.proxy, proxy.StructProxy):
-        parent = roll(document, struct.proxy.parent.unroll()[1])
-        return skip_to_next(parent, struct.proxy.index)
-    elif isinstance(struct.proxy, proxy.ListProxy):
-        parent = roll(document, struct.proxy.parent.unroll()[1])
-        return ListSelection(parent, struct.proxy.list_index, struct.proxy.index + 1)
-    assert(struct.proxy is not None)
-
-def deep_climb_head(struct, index, head):
-    obj = struct[index]
-    if isinstance(obj, Struct):
-        return deep_climb_head(obj, 0, 0)
-    elif isinstance(obj, list) and head < len(obj) and isinstance(obj[head], Struct):
-        return deep_climb_head(obj[head], 0, 0)
-    elif isinstance(obj, list):
-        sel = ListSelection(struct, index, min(head, len(obj)))
-    elif isinstance(obj, str):
-        sel = BufferSelection(struct, index, min(head, len(obj)))
-    elif isinstance(obj, unicode):
-        sel = StringSelection(struct, index, min(head, len(obj)))
-    else:
-        sel = Mutator(struct, index)
-    return sel
-
-def climb_head(struct, index):
-    current = struct
-    while isinstance(current[index], Struct):
-        current = current[index]
-        index = 0
-    obj = current[index]
-    if isinstance(obj, list):
-        sel = ListSelection(current, index, 0)
-    elif isinstance(obj, str):
-        sel = BufferSelection(current, index, 0)
-    elif isinstance(obj, unicode):
-        sel = StringSelection(current, index, 0)
-    else:
-        sel = Mutator(current, index)
-    return sel
-
-def climb_tail(struct, index):
-    current = struct
-    while isinstance(current[index], Struct):
-        current = current[index]
-        index = len(current) - 1
-    obj = current[index]
-    if isinstance(obj, list):
-        sel = ListSelection(current, index, len(obj))
-    elif isinstance(obj, str):
-        sel = BufferSelection(current, index, len(obj))
-    elif isinstance(obj, unicode):
-        sel = StringSelection(current, index, len(obj))
-    else:
-        sel = Mutator(current, index)
-    return sel
-
-def motion(sel, head, shift):
-    sel.head = head
-    if not shift:
-        sel.tail = head
+def in_module(path):
+    return os.path.join(os.path.dirname(__file__), path)
 
 background_color = rgba(0x24, 0x24, 0x24)
 green      = rgba(0x95, 0xe4, 0x54)
@@ -134,30 +29,7 @@ def set_mode(new_mode):
         mode.free()
     mode = new_mode
 
-
 null = Constant(u"null")
-
-syn = Synthetizer(language)
-ndef = analyzer.normalize(language)
-inv = analyzer.partial_inversion(ndef)
-
-chains = dict((n, {}) for n in ndef)
-
-for name, edge in analyzer.template_chains(inv, analyzer.String):
-    chains[name][analyzer.String] = edge
-for name, edge in analyzer.template_chains(inv, analyzer.Buffer):
-    chains[name][analyzer.Buffer] = edge
-
-for top_name in ndef:
-    for name, edge in analyzer.template_chains(inv, top_name):
-        chains[name][top_name] = edge
-
-
-for name, argv in ndef.items():
-    print 'TDEF:', name, ', '.join(map(repr, argv))
-
-for name, sources in inv.items():
-    print "INV:", name, sources
 
 def list_templates(arg, marg, top):
 #    print 'LIST TEMPLATES'
@@ -178,6 +50,23 @@ def list_templates(arg, marg, top):
 #            print name, True, cost + 2
             yield name, True, cost + 2
 
+def mkstruct(ndef, syn, name, argv):
+    for i in range(len(argv), len(ndef[name])):
+        ok, mok = ndef[name][i]
+        if len(ok) == 1 and ok[0] == analyzer.String:
+            argv.append(u"")
+        elif len(ok) == 1 and ok[0] == analyzer.Buffer:
+            argv.append("")
+        elif len(ok) > 0:
+            argv.append(null)
+        else:
+            argv.append([])
+    if len(argv) == 0:
+        return syn[name]
+    else:
+        return syn[name](*argv)
+    
+
 def instantiate(this, top):
     if this == top and top == analyzer.String:
         return u""
@@ -190,20 +79,22 @@ def instantiate(this, top):
             argv.append([instantiate(nxt, top)])
         else:
             argv.append(instantiate(nxt, top))
-    for i in range(len(argv), len(ndef[this])):
-        ok, mok = ndef[this][i]
-        if len(ok) == 1 and ok[0] == analyzer.String:
-            argv.append(u"")
-        elif len(ok) == 1 and ok[0] == analyzer.Buffer:
-            argv.append("")
-        elif len(ok) > 0:
-            argv.append(null)
-        else:
-            argv.append([])
-    if len(argv) == 0:
-        return syn[this]
-    else:
-        return syn[this](*argv)
+    return mkstruct(ndef, syn, this, argv)
+#
+#    for i in range(len(argv), len(ndef[this])):
+#        ok, mok = ndef[this][i]
+#        if len(ok) == 1 and ok[0] == analyzer.String:
+#            argv.append(u"")
+#        elif len(ok) == 1 and ok[0] == analyzer.Buffer:
+#            argv.append("")
+#        elif len(ok) > 0:
+#            argv.append(null)
+#        else:
+#            argv.append([])
+#    if len(argv) == 0:
+#        return syn[this]
+#    else:
+#        return syn[this](*argv)
 
 def autoinstantiate(arg, marg, top):
     ts = list(list_templates(arg, marg, top))
@@ -214,11 +105,26 @@ def autoinstantiate(arg, marg, top):
             return [inst]
         return inst
 
+copybuf = None
+
+def fullcopy(obj):
+    if isinstance(obj, Struct):
+        obj = obj.copy()
+    elif isinstance(obj, list):
+        obj = [o.copy() for o in obj]
+    return obj
+
 class EditMode(object):
     def __init__(self, sel, click_response=False):
         self.sel = sel
         self.overlay = Overlay(main_frame, self.render_overlay)
         self.dragging = click_response
+
+    def set_dirtyfile(self, dirty=True):
+        if dirty:
+            argon.set_caption("macron[%s] %s*" % (current_language.name, filename))
+        else:
+            argon.set_caption("macron[%s] %s" % (current_language.name, filename))
 
     def free(self):
         self.overlay.free()
@@ -249,6 +155,7 @@ class EditMode(object):
                 self.sel.splice(inst)
                 self.sel = deep_climb_head(self.sel.struct, self.sel.index, self.sel.start)
             else:
+                return
                 print "cannot instantiate", top, "here"
         elif isinstance(self.sel, Mutator):
             inst = autoinstantiate(arg, marg, top)
@@ -256,40 +163,86 @@ class EditMode(object):
                 self.sel.replace(inst)
                 self.sel = deep_climb_head(self.sel.struct, self.sel.index, 0)
             else:
+                return
                 print "cannot instantiate", top, "here"
         assert self.sel is not None
+        return True
 
     def put_struct(self, top):
         slot = find_slot(main_frame.contents, self.sel.struct, self.sel.index)
-        self.gen_struct(top)
-        self.sel.start = self.sel.stop
+        if self.gen_struct(top):
+            if isinstance(self.sel, Selection):
+                self.sel.start = self.sel.stop
+            if slot is not None:
+                slot.rebuild()
+            main_frame.dirty = True
+            self.set_dirtyfile()
+
+    def copy_selection(self):
+        global copybuf
+        if isinstance(self.sel, Selection):
+            dup = self.sel.struct[self.sel.index][self.sel.start:self.sel.stop]
+            if len(dup) == 1:
+                dup = dup[0]
+            copybuf = fullcopy(dup)
+        else:
+            dup = self.sel.struct[self.sel.index]
+            copybuf = fullcopy(dup)
+            print 'copy success'
+
+    def paste_selection(self):
+        slot = find_slot(main_frame.contents, self.sel.struct, self.sel.index)
+        if isinstance(self.sel, ListSelection) and isinstance(copybuf, list):
+            self.sel.splice(fullcopy(copybuf))
+        elif isinstance(self.sel, ListSelection) and isinstance(copybuf, (Struct, Constant)):
+            self.sel.splice([fullcopy(copybuf)])
+        elif isinstance(self.sel, StringSelection) and isinstance(copybuf, unicode):
+            self.sel.splice(copybuf)
+        elif isinstance(self.sel, BufferSelection) and isinstance(copybuf, str):
+            self.sel.splice(copybuf)
+        elif isinstance(self.sel, Mutator) and isinstance(copybuf, (Struct, Constant, unicode, str)):
+            self.sel.replace(fullcopy(copybuf))
+        else:
+            print 'paste unsuccessful'
+            return
         if slot is not None:
             slot.rebuild()
         main_frame.dirty = True
+        self.set_dirtyfile()
 
     def on_keydown(self, key, modifiers, text):
         shift = 'shift' in modifiers
         ctrl = 'ctrl' in modifiers
         nxt = None
-        if key == 'left' and self.sel.head > 0:
-            motion(self.sel, self.sel.head - 1, shift)
-        elif key == 'right' and self.sel.head < self.sel.length:
-            motion(self.sel, self.sel.head + 1, shift)
-        elif key == 'home':
+
+        if key == 'left' and isinstance(self.sel, Selection):
+            bkg = self.sel.head > 0
+            motion(self.sel, self.sel.head - bkg, shift)
+        elif key == 'right' and isinstance(self.sel, Selection):
+            fwd = self.sel.head < self.sel.length
+            motion(self.sel, self.sel.head + fwd, shift)
+        elif key == 'home' and isinstance(self.sel, Selection):
             motion(self.sel, 0, shift)
-        elif key == 'end':
+        elif key == 'end' and isinstance(self.sel, Selection):
             motion(self.sel, self.sel.length, shift)
         elif key == 'return' and shift:
-            nxt = skip_to_previous(self.sel.struct, self.sel.index)  # it might need fixup. :P
+            nxt = skip_to_previous(document, self.sel.struct, self.sel.index)  # it might need fixup. :P
         elif key == 'return':
-            nxt = skip_to_next(self.sel.struct, self.sel.index)  # it might need fixup. :P
+            nxt = skip_to_next(document, self.sel.struct, self.sel.index)  # it might need fixup. :P
         elif key == 'up':
-            nxt = wade_to_previous(self.sel)
-        elif key == 'down':
-            nxt = wade_to_next(self.sel)
+            nxt = wade_to_previous(document, self.sel)
+        elif key == 'down' or (key == 'space' and not ctrl):
+            nxt = wade_to_next(document, self.sel)
+        elif ctrl and key == 'y':
+            self.copy_selection()
+        elif ctrl and key == 'p':
+            self.paste_selection()
+        elif ctrl and key == 's':
+            save_file(filename, document)
+            self.set_dirtyfile(False)
         elif ctrl and key == 'a':
             if self.sel.start == 0 and self.sel.stop == self.sel.length:
-                nxt = select_this(self.sel.struct)
+                nxt = select_this(document, self.sel.struct)
             else:
                 self.sel.start = 0
                 self.sel.stop  = self.sel.length
@@ -298,6 +251,7 @@ class EditMode(object):
                 if self.sel.start == self.sel.stop and self.sel.stop < self.sel.length:
                     self.sel.stop += 1
                 self.sel.splice()
+                self.set_dirtyfile()
             slot = find_slot(main_frame.contents, self.sel.struct, self.sel.index)
             if slot is not None:
                 slot.rebuild()
@@ -307,10 +261,21 @@ class EditMode(object):
                 if self.sel.start == self.sel.stop and self.sel.start > 0:
                     self.sel.start -= 1
                 self.sel.splice()
+                self.set_dirtyfile()
             slot = find_slot(main_frame.contents, self.sel.struct, self.sel.index)
             if slot is not None:
                 slot.rebuild()
             main_frame.dirty = True
+        elif key == 'space':
+            slot = find_slot(main_frame.contents, self.sel.struct, self.sel.index)
+            self.gen_struct(analyzer.String)
+            if isinstance(self.sel, StringSelection):
+                self.sel.splice(u' ')
+                self.sel.start = self.sel.stop
+            if slot is not None:
+                slot.rebuild()
+            main_frame.dirty = True
+            self.set_dirtyfile()
         elif len(text) > 0 and (text.isalnum() or text in u"_"):
             slot = find_slot(main_frame.contents, self.sel.struct, self.sel.index)
             self.gen_struct(analyzer.String)
@@ -320,6 +285,7 @@ class EditMode(object):
             if slot is not None:
                 slot.rebuild()
             main_frame.dirty = True
+            self.set_dirtyfile()
         elif text == '!':
             self.put_struct(u"buffer")
         elif text == '"':
@@ -327,7 +293,7 @@ class EditMode(object):
         elif text == '#':
             self.put_struct(u"constant")
         elif text == '(':
-            self.put_struct(u"struct")
+            self.put_struct(u"struct") or self.put_struct(u"call")
         elif text == '[':
             self.put_struct(u"list")
         elif text == '{':
@@ -453,7 +419,38 @@ list_style   = default.inherit(background = bracket2, background_color = rgba(25
 struct_style = default.inherit(background = box2, background_color = rgba(255, 255, 255, 0x80), spacing = 8, padding=(4,4,4,4))
 
 # document
-document = language
+known_languages = {
+    u"language": lambda: language
+}
+
+script_directory = in_module('scripts')
+for filename in os.listdir(script_directory):
+    if not os.path.isdir(filename) and filename.endswith('.language'):
+        name, ext = os.path.splitext(filename)
+        path = os.path.join(script_directory, filename)
+        known_languages[name] = lambda: load_file(path)
+
+filename = sys.argv[1]
+
+ext = os.path.splitext(filename)[1]
+current_language = known_languages[ext[1:]]()
+
+syn = Synthetizer(current_language)
+ndef = analyzer.normalize(current_language)
+inv = analyzer.partial_inversion(ndef)
+
+chains = analyzer.build_all_chains(ndef, inv)
+
+for name, argv in ndef.items():
+    print 'TDEF:', name, ', '.join(map(repr, argv))
+
+for name, sources in inv.items():
+    print "INV:", name, sources
+
+if os.path.exists(filename):
+    document = load_file(filename)
+else:
+    document = mkstruct(ndef, syn, current_language.name, [])
 proxy.mkroot(None, document)
 
 # main frame
@@ -461,6 +458,8 @@ main_frame = Frame((0, 0, argon.width, argon.height), visualize_struct(document)
 main_frame.background_color = background_color
 
 set_mode(EditMode( climb_head(document, 0) ))
+
+argon.set_caption("macron[%s] %s" % (current_language.name, filename))
 
 @argon.listen
 def on_frame(now):

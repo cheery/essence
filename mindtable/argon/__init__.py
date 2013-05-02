@@ -61,6 +61,9 @@ class Argon(object):
         self.texture_cache = TextureCache()
         self.image_empty = Image(1, 1, "\xff\xff\xff\xff")
 
+    def set_caption(self, title):
+        pygame.display.set_caption(title)
+
     width  = property(lambda self: self.resolution[0])
     height = property(lambda self: self.resolution[1])
 

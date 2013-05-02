@@ -21,6 +21,9 @@ class Constant(ParsedString):
   def __init__(self, uid):
     self.uid = uid
 
+  def copy(self):
+    return self
+
 class StructType(ParsedString):
   __slots__ = ('uid', 'name', 'labels')
   def __init__(self, uid):
@@ -65,6 +68,8 @@ class Struct(object):
     for obj in self:
       if isinstance(obj, list):
         copies.append(list(obj))
+      elif isinstance(obj, (str, unicode)):
+        copies.append(obj)
       else:
         copies.append(obj.copy())
     return Struct(self.type, copies)

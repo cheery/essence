@@ -76,7 +76,7 @@ def read_block(fd, decls, decl):
     if isinstance(decl, Constant):
         return decl
     struct = Struct(decl, [])
-    for name in decl.names:
+    for name in decl.labels:
         which, data = read_record(fd)
         while which == 'decl':
             decls.append(data)
@@ -98,8 +98,8 @@ def write_block(fd, decls, block):
         write_le16(fd, uid)
         write_le16(fd, 0)
     else:
-        uid = push_decl(fd, decls, block.meta)
-        count = len(block.meta.names)
+        uid = push_decl(fd, decls, block.type)
+        count = len(block.type.labels)
         write_le16(fd, uid)
         write_le16(fd, count)
         for i in range(count):
