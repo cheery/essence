@@ -5,7 +5,10 @@
 
 class ParsedString(object):
   def __cmp__(self, other):
-    return cmp(self.uid, other.uid)
+    if isinstance(other, ParsedString):
+        return cmp(self.uid, other.uid)
+    else:
+        return -1
 
   def __hash__(self):
     return hash(self.uid)

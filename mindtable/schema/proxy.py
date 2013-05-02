@@ -72,3 +72,12 @@ def reproxy(parent, index, obj):
       reproxy(struct.proxy, index, obj)
   elif isinstance(obj, list):
     reproxy_list(parent, index, obj)
+
+#def validify(root):
+#  """
+#  This thing doesn't easily stay consistent, so this thing
+#  can be used to cause it to crash faster in error.
+#  """
+#  assert isinstance(root.proxy, RootProxy)
+#  for index, obj in enumerate(root):
+#  valiidf

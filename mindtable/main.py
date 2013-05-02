@@ -1,15 +1,17 @@
 from argon import Argon, rgba
 from frame import Frame, Overlay
 from schema.base import Constant, Struct
-from schema import proxy
+from schema import proxy, analyzer
 from schema.mutator import Mutator
 from schema.selection import Selection, BufferSelection, StringSelection, ListSelection
-from schema.language import language
+from schema.language import language, Synthetizer
 import layout
 
 def roll(document, path):
     current = document
     for index in path:
+        if index >= len(current):
+            raise Exception("something fukked up")
         current = current[index]
     return current
 
@@ -70,13 +72,13 @@ def deep_climb_head(struct, index, head):
     elif isinstance(obj, list) and head < len(obj) and isinstance(obj[head], Struct):
         return deep_climb_head(obj[head], 0, 0)
     elif isinstance(obj, list):
-        sel = ListSelection(current, index, min(head, len(obj)))
+        sel = ListSelection(struct, index, min(head, len(obj)))
     elif isinstance(obj, str):
-        sel = BufferSelection(current, index, min(head, len(obj)))
+        sel = BufferSelection(struct, index, min(head, len(obj)))
     elif isinstance(obj, unicode):
-        sel = StringSelection(current, index, min(head, len(obj)))
+        sel = StringSelection(struct, index, min(head, len(obj)))
     else:
-        sel = Mutator(current, index)
+        sel = Mutator(struct, index)
     return sel
 
 def climb_head(struct, index):
@@ -132,6 +134,86 @@ def set_mode(new_mode):
         mode.free()
     mode = new_mode
 
+
+null = Constant(u"null")
+
+syn = Synthetizer(language)
+ndef = analyzer.normalize(language)
+inv = analyzer.partial_inversion(ndef)
+
+chains = dict((n, {}) for n in ndef)
+
+for name, edge in analyzer.template_chains(inv, analyzer.String):
+    chains[name][analyzer.String] = edge
+for name, edge in analyzer.template_chains(inv, analyzer.Buffer):
+    chains[name][analyzer.Buffer] = edge
+
+for top_name in ndef:
+    for name, edge in analyzer.template_chains(inv, top_name):
+        chains[name][top_name] = edge
+
+
+for name, argv in ndef.items():
+    print 'TDEF:', name, ', '.join(map(repr, argv))
+
+for name, sources in inv.items():
+    print "INV:", name, sources
+
+def list_templates(arg, marg, top):
+#    print 'LIST TEMPLATES'
+    for name in arg:
+        if name == top:
+#            print name, False, 0
+            yield name, False, 0
+        elif isinstance(name, unicode) and top in chains[name]:
+            nxt, in_list, cost = chains[name][top]
+#            print name, False, cost + 1
+            yield name, False, cost + 1
+    for name in marg:
+        if name == top:
+#            print name, True,  1
+            yield name, True,  1
+        elif isinstance(name, unicode) and top in chains[name]:
+            nxt, in_list, cost = chains[name][top]
+#            print name, True, cost + 2
+            yield name, True, cost + 2
+
+def instantiate(this, top):
+    if this == top and top == analyzer.String:
+        return u""
+    if this == top and top == analyzer.Buffer:
+        return ""
+    argv = []
+    if this != top:
+        nxt, in_list, _ = chains[this][top]
+        if in_list:
+            argv.append([instantiate(nxt, top)])
+        else:
+            argv.append(instantiate(nxt, top))
+    for i in range(len(argv), len(ndef[this])):
+        ok, mok = ndef[this][i]
+        if len(ok) == 1 and ok[0] == analyzer.String:
+            argv.append(u"")
+        elif len(ok) == 1 and ok[0] == analyzer.Buffer:
+            argv.append("")
+        elif len(ok) > 0:
+            argv.append(null)
+        else:
+            argv.append([])
+    if len(argv) == 0:
+        return syn[this]
+    else:
+        return syn[this](*argv)
+
+def autoinstantiate(arg, marg, top):
+    ts = list(list_templates(arg, marg, top))
+    if len(ts) > 0:
+        nxt, in_list, cost = min(ts, key=lambda x: x[2])
+        inst = instantiate(nxt, top)
+        if in_list:
+            return [inst]
+        return inst
+
 class EditMode(object):
     def __init__(self, sel, click_response=False):
         self.sel = sel
@@ -145,7 +227,7 @@ class EditMode(object):
         argon.clear(rgba(0,0,0,0))
         slot = find_slot(main_frame.contents, self.sel.struct, self.sel.index)
         if slot is not None:
-            argon.render_rectangle(slot.rect, box7, color = rgba(32, 32, 32, 128))
+            argon.render_rectangle(slot.rect, box7, color = rgba(32, 32, 255, 128))
         if slot is not None and isinstance(self.sel, Selection):
             head = self.sel.head
             start, stop = self.sel.start, self.sel.stop
@@ -158,6 +240,32 @@ class EditMode(object):
                     argon.render_rectangle(rect, color = rgba(255, 255, 255, 255))
         if slot is None:
             argon.render_rectangle((0,0,main_frame.width, main_frame.height), box7, color = rgba(255, 255, 0, 192))
+
+    def gen_struct(self, top):
+        arg, marg = ndef[self.sel.struct.type.name][self.sel.index]
+        if isinstance(self.sel, ListSelection):
+            inst = autoinstantiate((), marg, top)
+            if inst is not None:
+                self.sel.splice(inst)
+                self.sel = deep_climb_head(self.sel.struct, self.sel.index, self.sel.start)
+            else:
+                print "cannot instantiate", top, "here"
+        elif isinstance(self.sel, Mutator):
+            inst = autoinstantiate(arg, marg, top)
+            if inst is not None:
+                self.sel.replace(inst)
+                self.sel = deep_climb_head(self.sel.struct, self.sel.index, 0)
+            else:
+                print "cannot instantiate", top, "here"
+        assert self.sel is not None
+
+    def put_struct(self, top):
+        slot = find_slot(main_frame.contents, self.sel.struct, self.sel.index)
+        self.gen_struct(top)
+        self.sel.start = self.sel.stop
+        if slot is not None:
+            slot.rebuild()
+        main_frame.dirty = True
 
     def on_keydown(self, key, modifiers, text):
         shift = 'shift' in modifiers
@@ -185,6 +293,45 @@ class EditMode(object):
             else:
                 self.sel.start = 0
                 self.sel.stop  = self.sel.length
+        elif key == 'delete':
+            if isinstance(self.sel, Selection):
+                if self.sel.start == self.sel.stop and self.sel.stop < self.sel.length:
+                    self.sel.stop += 1
+                self.sel.splice()
+            slot = find_slot(main_frame.contents, self.sel.struct, self.sel.index)
+            if slot is not None:
+                slot.rebuild()
+            main_frame.dirty = True
+        elif key == 'backspace':
+            if isinstance(self.sel, Selection):
+                if self.sel.start == self.sel.stop and self.sel.start > 0:
+                    self.sel.start -= 1
+                self.sel.splice()
+            slot = find_slot(main_frame.contents, self.sel.struct, self.sel.index)
+            if slot is not None:
+                slot.rebuild()
+            main_frame.dirty = True
+        elif len(text) > 0 and (text.isalnum() or text in u"_"):
+            slot = find_slot(main_frame.contents, self.sel.struct, self.sel.index)
+            self.gen_struct(analyzer.String)
+            if isinstance(self.sel, StringSelection):
+                self.sel.splice(text)
+                self.sel.start = self.sel.stop
+            if slot is not None:
+                slot.rebuild()
+            main_frame.dirty = True
+        elif text == '!':
+            self.put_struct(u"buffer")
+        elif text == '"':
+            self.put_struct(u"string")
+        elif text == '#':
+            self.put_struct(u"constant")
+        elif text == '(':
+            self.put_struct(u"struct")
+        elif text == '[':
+            self.put_struct(u"list")
+        elif text == '{':
+            self.put_struct(u"group")
 
         #fixme, maybe. :/
         if nxt is not None:
@@ -214,7 +361,7 @@ class StructureEditor(object):
         if isinstance(obj, (Struct, Constant)):
             intron.node = visualize_struct(obj)
         elif isinstance(obj, list) and len(obj) == 0:
-            intron.node = layout.Label("empty", gray_style)
+            intron.node = layout.Label("[]", gray_style)
         elif isinstance(obj, list):
             boxes = []
             for index, struct in enumerate(obj):
@@ -273,7 +420,7 @@ def find_slot(box, struct, index):
         return rt
 
 ## Initializes the renderer and layouter.
-argon = Argon()
+argon = Argon((600, 1000))
 box7 = argon.cache.patch9('box7.png')
 box2 = argon.cache.patch9('box2.png')
 bracket2 = argon.cache.patch9('bracket2.png')

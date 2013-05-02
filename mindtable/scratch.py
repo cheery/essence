@@ -1,24 +1,22 @@
-from schema.base import Constant, StructType, Struct
-from schema import proxy
+from schema import analyzer
+from schema.language import language
+
+ndef = analyzer.normalize(language)
+
+inv = analyzer.partial_inversion(ndef)
 
 
-Variable = StructType(u"variable:name")
-print Variable.name
-print Variable.labels
 
-Call = StructType(u"call:callee:arguments")
-print Call
+for key, argv in ndef.items():
+    print key
+    if argv:
+        print '   ' + '\n   '.join(map(repr, argv))
 
-Yes = Constant(u"yes")
-No  = Constant(u"no")
+print 'inversion'
+print inv
 
-print Yes, No
-
-document = Call(Variable(u"hello"), [
-  Variable(u"world")
-])
-print document
-
-proxy.mkroot('document', document)
-
-print document.arguments[0].proxy
+for name, (nxt, in_list, cost) in analyzer.template_chains(inv, analyzer.String):
+    if in_list:
+        print "%12r[0] > [%r]" % (name, nxt)
+    else:
+        print "%12r[0] > %r" % (name, nxt)
