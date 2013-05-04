@@ -7,6 +7,7 @@ from schema.selection import Selection, BufferSelection, StringSelection, ListSe
 from schema.language import language, Synthetizer
 from schema.flatfile import load_file, save_file
 from navigation import *
+import macron
 import layout
 import os, sys
 
@@ -22,6 +23,10 @@ gray       = rgba(0x99, 0x96, 0x8b)
 back       = rgba(0x24, 0x24, 0x24)
 whiteish   = rgba(0xf6, 0xf3, 0xe8)
 
+class DefaultTheme(object):
+    pass
+
+
 mode = None
 def set_mode(new_mode):
     global mode
@@ -31,24 +36,31 @@ def set_mode(new_mode):
 
 null = Constant(u"null")
 
+cost_addweights = {
+    'variable': -1,
+    'number': 0,
+}
+
 def list_templates(arg, marg, top):
 #    print 'LIST TEMPLATES'
     for name in arg:
+        addweight = cost_addweights.get(name, 0)
         if name == top:
 #            print name, False, 0
-            yield name, False, 0
+            yield name, False, 0 + addweight
         elif isinstance(name, unicode) and top in chains[name]:
             nxt, in_list, cost = chains[name][top]
 #            print name, False, cost + 1
-            yield name, False, cost + 1
+            yield name, False, cost + 1 + addweight
     for name in marg:
+        addweight = cost_addweights.get(name, 0)
         if name == top:
 #            print name, True,  1
-            yield name, True,  1
+            yield name, True,  1 + addweight
         elif isinstance(name, unicode) and top in chains[name]:
             nxt, in_list, cost = chains[name][top]
 #            print name, True, cost + 2
-            yield name, True, cost + 2
+            yield name, True, cost + 2 + addweight
 
 def mkstruct(ndef, syn, name, argv):
     for i in range(len(argv), len(ndef[name])):
@@ -213,6 +225,7 @@ class EditMode(object):
     def on_keydown(self, key, modifiers, text):
         shift = 'shift' in modifiers
         ctrl = 'ctrl' in modifiers
+        alt = 'alt' in modifiers
         nxt = None
 
         if key == 'left' and isinstance(self.sel, Selection):
@@ -276,9 +289,18 @@ class EditMode(object):
                 slot.rebuild()
             main_frame.dirty = True
             self.set_dirtyfile()
+        elif alt and text == 'w':
+            self.put_struct(u"while")
+        elif alt and text == 'e':
+            self.put_struct(u"foreach")
+        elif alt and text == 't':
+            self.put_struct(u"true")
+        elif alt and text == 'f':
+            self.put_struct(u"false")
         elif len(text) > 0 and (text.isalnum() or text in u"_"):
             slot = find_slot(main_frame.contents, self.sel.struct, self.sel.index)
-            self.gen_struct(analyzer.String)
+            self.gen_struct(("number" if text.isdigit() else analyzer.String))
+                #self.gen_struct(analyzer.String)
             if isinstance(self.sel, StringSelection):
                 self.sel.splice(text)
                 self.sel.start = self.sel.stop
@@ -297,7 +319,19 @@ class EditMode(object):
         elif text == '[':
             self.put_struct(u"list")
         elif text == '{':
-            self.put_struct(u"group")
+            self.put_struct(u"group") or self.put_struct(u"lambda")
+        elif text == '=':
+            self.put_struct(u"let")
+        elif text == '.':
+            self.put_struct(u"attribute")
+        elif text == '<':
+            self.put_struct(u"return")
+        elif text == '@':
+            self.put_struct(u"dictionary")
+        elif text == '[':
+            self.put_struct(u"list")
+        elif text == '?':
+            self.put_struct(u"condition_rule")
 
         #fixme, maybe. :/
         if nxt is not None:
@@ -318,20 +352,23 @@ class EditMode(object):
         self.dragging = False
 
 class StructureEditor(object):
-    def __init__(self, struct, index):
+    def __init__(self, struct, index, builder=lambda intron: False):
         self.struct = struct
         self.index  = index
+        self.builder = builder
 
     def build(self, intron):
+        if self.builder(intron):
+            return
         obj = self.struct[self.index]
         if isinstance(obj, (Struct, Constant)):
-            intron.node = visualize_struct(obj)
+            intron.node = default_visualizer(obj)
         elif isinstance(obj, list) and len(obj) == 0:
             intron.node = layout.Label("[]", gray_style)
         elif isinstance(obj, list):
             boxes = []
             for index, struct in enumerate(obj):
-                box = visualize_struct(struct)
+                box = default_visualizer(struct)
                 box.reference = (index, index+1)
                 boxes.append(box)
             intron.node = layout.Column(boxes, list_style)
@@ -363,7 +400,7 @@ class StructureEditor(object):
 #        print 'clicky!'
 #        print self.struct
 
-def visualize_struct(struct):
+def default_visualizer(struct):
     if isinstance(struct, Constant):
         return layout.Label(struct.uid, type_style)
     boxes = [ ]
@@ -386,7 +423,7 @@ def find_slot(box, struct, index):
         return rt
 
 ## Initializes the renderer and layouter.
-argon = Argon((600, 1000))
+argon = Argon((600, 1100))
 box7 = argon.cache.patch9('box7.png')
 box2 = argon.cache.patch9('box2.png')
 bracket2 = argon.cache.patch9('bracket2.png')
@@ -432,8 +469,8 @@ for filename in os.listdir(script_directory):
 
 filename = sys.argv[1]
 
-ext = os.path.splitext(filename)[1]
-current_language = known_languages[ext[1:]]()
+langtype = os.path.splitext(filename)[1][1:]
+current_language = known_languages[langtype]()
 
 syn = Synthetizer(current_language)
 ndef = analyzer.normalize(current_language)
@@ -453,16 +490,81 @@ else:
     document = mkstruct(ndef, syn, current_language.name, [])
 proxy.mkroot(None, document)
 
+def iss(obj, name):
+    if isinstance(obj, Constant):
+        return obj.uid == name
+    elif isinstance(obj, Struct):
+        return obj.type.name == name
+
+glob = {
+    u"theme": DefaultTheme,
+    u"lengthof": len,
+    u"isstruct": lambda obj: isinstance(obj, Struct),
+    u"isconst": lambda obj: isinstance(obj, Constant),
+    u"islist": lambda obj: isinstance(obj, list),
+    u"isstring": lambda obj: isinstance(obj, unicode),
+    u"isbuffer": lambda obj: isinstance(obj, str),
+    u"iss": iss,
+    u"rgba": rgba,
+    u"argon": argon,
+    u"layout": layout,
+    u"StructureEditor": StructureEditor,
+}
+glob.update(macron.glob)
+
+visualizer = default_visualizer
+visualizer_mtime = None
+def load_visualizer(name, at_reload=False):
+    global visualizer, visualizer_mtime
+    try:
+        path = os.path.join(script_directory, name + '.macron')
+        mtime = os.path.getmtime(path)
+        if visualizer_mtime == mtime:
+            return False
+        visualizer_mtime = mtime
+        program = load_file(path)
+        ret, module = macron.run(program, glob)
+        def visualizer_bind(struct):
+            try:
+                obj = module['visualizer'](struct)
+                if isinstance(obj, layout.Box):
+                    return obj
+                else:
+                    return default_visualizer(struct)
+            except Exception, exception:
+                print "visualizer bad:", exception
+                return default_visualizer(struct)
+        visualizer = visualizer_bind
+        return True
+    except Exception, exception:
+        print exception
+    return False
+
+    
+load_visualizer(langtype)
+#after loading visualizer, update the main_frame
+
 # main frame
-main_frame = Frame((0, 0, argon.width, argon.height), visualize_struct(document))# layout.Label("hello there!", default))
+main_frame = Frame((0, 0, argon.width, argon.height), visualizer(document))# layout.Label("hello there!", default))
 main_frame.background_color = background_color
 
 set_mode(EditMode( climb_head(document, 0) ))
 
 argon.set_caption("macron[%s] %s" % (current_language.name, filename))
 
+
+argon.previous_sys_check = 0.0
+
 @argon.listen
 def on_frame(now):
+    ## reload visualizer if it changed.
+    if argon.previous_sys_check + 2.0 < now:
+        if load_visualizer(langtype, at_reload=True):
+            print 'trying to reload visualizer'
+            main_frame.contents = visualizer(document)
+            main_frame.dirty = True
+        argon.previous_sys_check = now
+
     argon.clear(rgba(0x80, 0x90, 0xA0))
     main_frame.render(argon)
 

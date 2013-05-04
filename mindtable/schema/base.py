@@ -77,8 +77,10 @@ class Struct(object):
   def __getattr__(self, name):
     if name in Struct.unshadow:
       raise AttributeError(name)
-    else:
+    elif name in self.type.labels:
       return self[self.type.labels.index(name)]
+    else:
+        raise ValueError("%r not in %r" % (name, self.type))
 
   def __setattr__(self, name, value):
     if name in Struct.unshadow:

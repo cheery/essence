@@ -104,7 +104,7 @@ def write_block(fd, decls, block):
         write_le16(fd, count)
         for i in range(count):
             item = block[i]
-            if isinstance(item, Struct):
+            if isinstance(item, (Struct, Constant)):
                 write_block(fd, decls, item)
             elif isinstance(item, list):
                 write_list(fd, decls, item)
