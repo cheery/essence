@@ -1,0 +1,12 @@
+the last editor design made me realise the editor needs to
+grow alongside when real requirements appear. Seed is the
+next version, which is developed to this rule.
+
+Fundamentals of seed research:
+    - produce smallest useful thing
+    - do not worry about ANY features you do not need right now
+    - keep rebuilding layouting engine around true requirements
+    - rebuild input around true requirements
+
+Things to do:
+    - put Frame listen the document it is layouting.
