@@ -164,6 +164,7 @@ row_default = default.inherit(spacing = 8)
 sym_default  = default.inherit(color = cyan)
 bad_default  = default.inherit(color = red)
 obj_default = default.inherit(color = gray)
+str_default = default.inherit(color = lime)
 list_default = default.inherit(background = bracket2, background_color = gray, padding = (4, 4, 4, 4))
 
 def mk_unknown(intron, obj):
@@ -174,8 +175,9 @@ def mk_unknown(intron, obj):
             layout.Column(default_layouter.many(obj), default),
         ], row_default)
     elif isinstance(obj, mutable.String):
-        intron.node = layout.Label(obj.data, default)
-        intron.node.reference = 0, len(obj)
+        data = layout.Label(obj.data, str_default)
+        data.reference = 0, len(obj)
+        intron.node = layout.Row([layout.Label('"', str_default), data, layout.Label('"', str_default)], default)
     elif isinstance(obj, mutable.List):
         intron.node = layout.Column(default_layouter.many(obj), list_default)
     else:
