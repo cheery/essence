@@ -212,3 +212,22 @@ def extend(selection):
             return normalize(selection.container, get_pole(selection))
     else:
         return normalize(selection.parent)
+
+def getdata(obj):
+    """
+        Specific function defined for Strings and Buffers
+        which converts them into encodeable format.
+    """
+    return obj.data
+
+def isstruct(obj):
+    return isinstance(obj, Struct)
+
+def isstring(obj):
+    return isinstance(obj, String)
+
+def isbuffer(obj):
+    return False
+
+def islist(obj):
+    return isinstance(obj, List)

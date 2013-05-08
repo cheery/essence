@@ -1,12 +1,18 @@
+import sys, os
 from argon import Argon, rgba
 from frame import Frame, Overlay, LayoutController
-from schema import mutable
+from schema import mutable, fileformat_flat
 import layout
 
-document = mutable.Document([
-    mutable.String(u"hello"),
-    mutable.String(u"world"),
-])
+filename = (sys.argv[1] if len(sys.argv) > 1 else 'scratch.flat')
+
+if os.path.exists(filename):
+    document = fileformat_flat.load_file(filename, mutable)
+else:
+    document = mutable.Document([
+    #    mutable.String(u"hello"),
+    #    mutable.String(u"world"),
+    ])
 
 argon = Argon(600, 800)
 
@@ -84,6 +90,8 @@ class EditMode(Mode):
         overlay = self.overlay
         shift = 'shift' in modifiers
         ctrl  = 'ctrl' in modifiers
+        if ctrl and key == 's':
+            fileformat_flat.save_file(filename, mutable, document)
         if ctrl and key == 'a':
             self.selection = mutable.extend(selection)
             overlay.dirty = True
