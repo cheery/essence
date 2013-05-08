@@ -1,97 +1,58 @@
-IRC: Freenode.net#essence
+This directory contains material used to study editing of
+programs in structured form.
 
-Structural editing is highly researched topic with poor yield in results.
-Because of this we are still using text editors to edit code and even
-formatted text documents. The Essential Editor Research Project is an
-attempt to produce a generic, flexible and simple editor that would
-substitute text-based programming interfaces.
+All programming tools that are common at the time of writing this
+document store programs as text. Such programs are easy to edit with a
+text editor but they need to be parsed before they can be evaluated or
+analyzed. Parsing converts the source code into a structured form, usually
+an abstract syntax tree, which is easy to evaluate by the computer.
 
-My own interest to the project come from a journey in programming language
-design. I want to remove intolerable restrictions that parsers introduce to
-the designers of programming languages. Parser forces a tradeoff where you
-should decide between flexible language, straightforward implementation and
-user satisfaction. If you aim center like I tried, you'll likely get nothing.
-I want to empty the pajatso by punching my fist through the damn crap.
+Parsers are difficult to produce, and this produces limits into programming
+language design, unless they are mitigated by using a syntax linear to
+structured form, such as in lisp. This in overall makes it difficult to
+discover the impact of an individual change on language design.
 
-Even if you aim only to the side of that parser triangle, the chances are
-you'll miss. Guido did his best to make a pleasant language out of python,
-he succeed on some things but python is one clusterfuck if you'd like to
-get it interface with C-codebase or handle typed arrays well. Python sucks
-in convenience at GUI programming because you cannot pass anonymous function
-block to a function call. You have to mess your namespace in order to do that.
-I hate python although I use it. It's still the most convenient programming 
-language to use, if you ignore coffeescript.
+When parsing fails, a syntax error is introduced. Syntax errors always
+prevent the evaluation of the program. Programmers have to learn cope with
+syntax errors. Programming is intrinsically hard, so excess difficulties aren't nice.
 
-EERP has proved to be truly a research project. I've rewritten the codebase
-multiple times and understood this project is a puzzle that doesn't unlodge
-by just throwing more work on it. An untolerably complex editor couldn't be
-ever adopted by anyone because the programmer must know how his tools are
-working in order to use them efficiently. I must rely on my intelligency
-and laziness to get any results. Studying the project itself reveals an
-interesting pattern, where complete redesign of one module ripples to other
-program modules. This rippling causes partial rewrite of the whole project
-at times. To combat the ripple, considerable and cognitive work-avoidance
-is required to keep the project under control of a single human. Failure in
-taking the ripple to account will cause a catastropic slowdown on the progress.
+Parser needs to be reimplemented inside editor to make the editor aware of
+the structure. Structure aware text editors are not simple. Multiple different
+languages in single source file add extra complication to the subject.
 
-There's the one obvious slashback that usage of project means you have to throw
-away about all of your text-based toolchain. After I've started the project,
-I've discovered some merits that might turn the table over. I'm really pissed
-up to text representation of structures, and that might mean the table will
-actually soar through the air and never land anywhere again as atmospheric
-particles tear it apart... But throwing the table around is my plan.
+Least importantly, parsing is a computationally expensive operation.
 
-== Dependencies ==
+Despite shortcomings, programming is still done with text editors today
+as they have benefits that cannot be skipped. First of all text is simply
+what everyone does. Nobody considers alternatives. This is not the only
+reason for text dominance though.
 
-You need casuarius and pygame to run the editor.
+Text files are easy to create and a simple text editor is easy to implement.
+As a structure the text files are easy to understand, although there are many
+encodings for text. Text is generic purpose, so once you have a simple text
+editor, you can use it to write programs.
 
-== How Does the Editor Function? ==
+There are tons of tools such as diff and grep, that operate on text files.
+They can be directly used to source code when it's text. There are many
+algorithms for text, such as ones used to provide collaborative editing.
+Lot of editors exists, some that allow text to be folded to hide lines
+that are irrelevant at the time.
 
-The commandline syntax to start it is:
+Programming languages are barely ever strict, so users can add comments
+and layout the code by adding superfluous spaces and carriages. This is
+so useful that many editors attempt to help user with a heuristic which
+adds spaces after carriage.
 
-    python editor.py [filename]
+Programming in structured form has such potential that it needs to be
+considered essential to research through. The Essential Editor Research
+Project studies structured form editing.
 
-If a filename is given and it exists, the editor attempts to load the file.
-In case of failure it will likely crash. Otherwise, a window appears.
+The latest working editor is seed/, it requires pygame and pyopengl. 
+It should run when you type "python main.py" inside it's directory.
 
-== Keybindings ==
+If you are interested about this project, I recommend you come to chat with others.
+We use IRC: irc.freenode.net#essence
 
-These keybindings are deprecated, but demonstrate what
-there has been in the previous versions.
+There's also the mailing list: structuredform@googlegroups.com
 
-=== Navigation ===
-
-For navigation commands you can keep shift down, and it will select the elements.
-
-    up              walk to the last node boundary
-    down            walk to the next node boundary
-    left            walk to the last boundary
-    right           walk to the next boundary
-
-=== Traversal (Navigation) ===
-
-    enter           descends to an element under cursor, goes to the first node boundary within element
-    ^enter          descends to the last node boundary within element
-    space           ascends from the element
-    ^space          ascends from the element, but from front side
-
-=== System ===
-
-    C-s             Saves the document with it's filename
-    C-q             quits the document if not modified
-    C-Q             quits without saving the document
-
-=== Modification ===
-
-    C-u             undo last action
-    C-r             redo last undoed action
-
-    C-a             select all
-
-    C-y             yank the selection
-    C-delete        yank and delete the selection
-    C-insert        insert the selection over existing selection
-
-    tab             builds an element from the selection, with tag 'unk'
-    delete          delete selection or next symbol|node
-    backspace       delete selection or last symbol|node
+https://groups.google.com/forum/?fromgroups#!forum/structuredform
