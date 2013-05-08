@@ -6,6 +6,7 @@
     them together with no effort.
 """
 from schema import mutable
+from frame import LayoutController
 import layout
 
 class LayoutRoot(object):
@@ -35,12 +36,3 @@ class LayoutChain(object):
             intron.reference = (index, index+1)
             introns.append(intron)
         return introns
-
-class LayoutController(object):
-    def __init__(self, fn, obj):
-        self.fn  = fn
-        self.obj = obj
-        assert not isinstance(self.fn, layout.Intron)
-
-    def build(self, intron):
-        self.fn(intron, self.obj)

@@ -16,7 +16,9 @@ class StructType(object):
 def reparent(this, children):
     out = []
     for obj in children:
-        assert obj.parent is None
+        if not (obj.parent is None or this is None):
+            print obj, this, children
+        assert obj.parent is None or this is None
         obj.parent = this
         out.append(obj)
     return out
@@ -37,6 +39,15 @@ class Struct(object):
     def __len__(self):
         return len(self.data)
 
+    def __getitem__(self, index):
+        return self.data[index]
+
+    def __setitem__(self, index, value):
+        assert value.parent is None
+        self.data[index].parent = None
+        self.data[index] = value
+        value.parent = self
+
 class List(object):
     def __init__(self, data):
         self.data = reparent(self, data)
@@ -50,6 +61,20 @@ class List(object):
 
     def __len__(self):
         return len(self.data)
+
+    def __getitem__(self, index):
+        return self.data[index]
+
+    def __setitem__(self, index, value):
+        assert value.parent is None
+        self.data[index].parent = None
+        self.data[index] = value
+        value.parent = self
+
+    def _splice(self, start, stop, value):
+        removed = reparent(None, self.data[start:stop])
+        self.data[start:stop] = reparent(self, value)
+        return removed
 #
 #class Buffer(object):
 #    def __init__(self, data):
@@ -64,9 +89,22 @@ class String(object):
     def __len__(self):
         return len(self.data)
 
+    def __getitem__(self, what):
+        return self.data[what]
+
+    def _splice(self, start, stop, value):
+        assert isinstance(value, unicode)
+        removed = self.data[start:stop]
+        self.data = self.data[:start] + value + self.data[stop:]
+        return removed
+
 class Document(object):
     def __init__(self, objects):
         self.objects = reparent(self, objects)
+        self.listeners = set()
+
+    def index(self, obj):
+        return self.objects.index(obj)
 
     def __iter__(self):
         return iter(self.objects)
@@ -74,11 +112,32 @@ class Document(object):
     def __len__(self):
         return len(self.objects)
 
+    def __getitem__(self, index):
+        return self.objects[index]
+
+    def __setitem__(self, index, value):
+        assert value.parent is None
+        self.objects[index].parent = None
+        self.objects[index] = value
+        value.parent = self
+
     def replace(self, this, that):
-        raise Exception("implement replace first")
+        parent = this.parent
+        index  = parent.index(this)
+        parent[index] = that
+        for listener in self.listeners:
+            listener.on_replace(parent, index, this, that)
 
     def splice(self, container, start, stop, data):
-        raise Exception("implement splice first")
+        removed = container._splice(start, stop, data)
+        for listener in self.listeners:
+            listener.on_splice(container, start, stop, data, removed)
+        return removed
+
+    def _splice(self, start, stop, value):
+        removed = reparent(None, self.objects[start:stop])
+        self.objects[start:stop] = reparent(self, value)
+        return removed
 
 class Selection(object):
     def __init__(self, container, head, tail=None):
@@ -86,7 +145,7 @@ class Selection(object):
         self.head      = head
         self.tail      = head if tail is None else tail
 
-    last = property(lambda self: len(self.struct[self.index]))
+    last = property(lambda self: len(self.container))
     def _get_start(self):
         if self.head < self.tail:
             return self.head
@@ -111,16 +170,45 @@ class Selection(object):
             self.head = value
     stop = property(_get_stop, _set_stop)
 
+    def splice(self, data):
+        document = get_document(self.container)
+        document.splice(self.container, self.start, self.stop, data)
+        self.stop = self.start + len(data)
+
 def normalize(obj, pole=True):
     if isinstance(obj, Document):
         return Selection(obj, len(obj)*pole, len(obj)*(not pole)) 
     elif isinstance(obj, Selection):
         return obj
-    elif isinstance(obj.parent, List):
+    elif isinstance(obj.parent, (List, Document)):
         index = obj.parent.index(obj)
         return Selection(obj.parent, index+pole, index+(not pole))
+    else:
+        return obj
 
 def get_object(obj):
     if isinstance(obj, Selection):
         return obj.container
     return obj
+
+def get_document(obj):
+    while not isinstance(obj, Document):
+        obj = obj.parent
+    return obj
+
+def get_pole(obj):
+    if isinstance(obj, Selection):
+        return obj.head >= obj.tail
+    return False
+
+def extend(selection):
+    if isinstance(selection, Selection):
+        if selection.start > 0 or selection.stop < selection.last:
+            selection = Selection(selection.container, selection.head, selection.tail)
+            selection.start = 0
+            selection.stop  = selection.last
+            return selection
+        else:
+            return normalize(selection.container, get_pole(selection))
+    else:
+        return normalize(selection.parent)

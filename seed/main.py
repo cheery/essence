@@ -1,5 +1,5 @@
 from argon import Argon, rgba
-from frame import Frame, Overlay
+from frame import Frame, Overlay, LayoutController
 from schema import mutable
 import layout
 
@@ -23,28 +23,8 @@ def box_renderer(argon, box):
         color            = box.style['color']
         argon.render.text(box.baseline_pos, box.source, font, color)
 
-background_color = rgba(0x24, 0x24, 0x24)
-green      = rgba(0x95, 0xe4, 0x54)
-cyan       = rgba(0x8a, 0xc6, 0xf2)
-red        = rgba(0xe5, 0x78, 0x6d)
-lime       = rgba(0xca, 0xe6, 0x82)
-gray       = rgba(0x99, 0x96, 0x8b)
-back       = rgba(0x24, 0x24, 0x24)
-whiteish   = rgba(0xf6, 0xf3, 0xe8)
-
-box7 = argon.load.patch9('box7.png')
-
-default = layout.default.inherit(
-    renderer = box_renderer,
-    background = None,
-    background_color = rgba(255, 255, 255),
-    font = argon.default_font,
-    color = whiteish,
-    align = layout.Align(0, 0),
-)
-
 def render_selection(argon, frame, selection):
-    box = find_intron(frame.box, mutable.get_object(selection))
+    box = frame.find_intron(mutable.get_object(selection))
     if box is None:
         argon.render.rectangle((0,0,frame.width, frame.height), box7, color = rgba(255, 255, 0, 192))
     else:
@@ -61,6 +41,9 @@ def render_selection(argon, frame, selection):
                     argon.render.rectangle(rect, color = rgba(255, 255, 255, 255))
 
 class Mode(object):
+    def free(self):
+        pass
+
     def on_keydown(self, key, modifiers, text):
         pass
 
@@ -86,27 +69,116 @@ class EditMode(Mode):
     def free(self):
         self.overlay.free()
 
-from layoutchain import LayoutRoot, LayoutChain, LayoutController
+    def insert_object(self, data):
+        if isinstance(self.selection, mutable.Selection):
+            if isinstance(self.selection.container, (mutable.Document, mutable.List)):
+                self.selection.splice([data])
+                return True
+        else:
+            mutable.get_document(self.selection).replace(self.selection, data)
+            self.selection = data
+            return True
+
+    def on_keydown(self, key, modifiers, text):
+        selection = self.selection
+        overlay = self.overlay
+        shift = 'shift' in modifiers
+        ctrl  = 'ctrl' in modifiers
+        if ctrl and key == 'a':
+            self.selection = mutable.extend(selection)
+            overlay.dirty = True
+        if isinstance(selection, mutable.Selection):
+            if key == 'left' and selection.head > 0:
+                selection.head -= 1
+            elif key == 'right' and selection.head < selection.last:
+                selection.head += 1
+            if key in ('left', 'right'):
+                selection.tail = selection.tail if shift else selection.head
+                overlay.dirty = True
+            if isinstance(selection.container, mutable.String):
+                if not ctrl and len(text) > 0 and text.isalnum() or text in ' ':
+                    selection.splice(text)
+                    selection.start = selection.stop
+            if key in ('backspace', 'delete'):
+                if selection.start == selection.stop:
+                    selection.start -= (key == 'backspace')
+                    selection.stop  += (key == 'delete')
+                selection.splice(u'')
+                selection.stop = selection.start
+        else:
+            parent = selection.parent
+            index  = parent.index(selection)
+            if key == 'left' and index > 0:
+                self.selection = parent[index-1]
+                overlay.dirty = True
+            if key == 'right' and index+1 < len(parent):
+                self.selection = parent[index+1]
+                overlay.dirty = True
+
+        if text == '/':
+            target = mutable.String("")
+            data = mutable.Struct(mutable.StructType(u'variable:name'), [target])
+            if self.insert_object(data):
+                self.selection = mutable.Selection(target, 0)
+
+        if text == '(':
+            target = mutable.Struct(mutable.StructType(u'null'), [])
+            data = mutable.Struct(mutable.StructType(u'call:callee:arguments'), [target, mutable.List([])])
+            if self.insert_object(data):
+                self.selection = target
+
+
+from layoutchain import LayoutRoot, LayoutChain
+
+background_color = rgba(0x24, 0x24, 0x24)
+green      = rgba(0x95, 0xe4, 0x54)
+cyan       = rgba(0x8a, 0xc6, 0xf2)
+red        = rgba(0xe5, 0x78, 0x6d)
+lime       = rgba(0xca, 0xe6, 0x82)
+gray       = rgba(0x99, 0x96, 0x8b)
+back       = rgba(0x24, 0x24, 0x24)
+whiteish   = rgba(0xf6, 0xf3, 0xe8)
+
+box7 = argon.load.patch9('box7.png')
+bracket2 = argon.load.patch9('bracket2.png')
+
+default = layout.default.inherit(
+    renderer = box_renderer,
+    background = None,
+    background_color = rgba(255, 255, 255),
+    font = argon.default_font,
+    color = whiteish,
+    align = layout.Align(0, 0),
+)
+
+row_default = default.inherit(spacing = 8)
+
+sym_default  = default.inherit(color = cyan)
+bad_default  = default.inherit(color = red)
+obj_default = default.inherit(color = gray)
+list_default = default.inherit(background = bracket2, background_color = gray, padding = (4, 4, 4, 4))
 
 def mk_unknown(intron, obj):
     intron.style = default
     if isinstance(obj, mutable.Struct):
         intron.node = layout.Row([
-            layout.Label(obj.type.name, default),
+            layout.Label(obj.type.name, sym_default),
             layout.Column(default_layouter.many(obj), default),
-        ], default)
+        ], row_default)
     elif isinstance(obj, mutable.String):
         intron.node = layout.Label(obj.data, default)
         intron.node.reference = 0, len(obj)
+    elif isinstance(obj, mutable.List):
+        intron.node = layout.Column(default_layouter.many(obj), list_default)
     else:
-        intron.node = layout.Label("unknown %r" % obj)
+        intron.node = layout.Label("unknown %r" % obj, bad_default)
 
 def mk_document(intron, document):
     intron.style = default
     if len(document) > 0:
         intron.node = layout.Column(default_layouter.many(document), default)
     else:
-        intron.node = layout.Label("empty document", default)
+        intron.node = layout.Label("empty document", obj_default)
 
 default_layouter = LayoutChain({
     mutable.Document: mk_document,
@@ -115,7 +187,7 @@ default_layouter = LayoutChain({
 toolbar_height = argon.default_font.height*2
 frame = Frame((0, 0, argon.width, argon.height-toolbar_height), document, default_layouter)
 frame.background_color = background_color
-frame.mode = EditMode(frame, mutable.normalize(document))
+frame.mode = EditMode(frame, mutable.normalize(document, False))
 
 def set_mode(new_mode):
     if frame.mode is not None:
@@ -130,16 +202,6 @@ def on_frame(now):
     #argon.render.rectangle((0,0, 200, 200), box7)
     argon.show_performance_log()
     argon.render.unbind()
-
-def find_intron(box, obj):
-    if isinstance(box, layout.Intron) and isinstance(box.controller, LayoutController):
-        if box.controller.obj == obj:
-            return box
-    for child in box:
-        ret = find_intron(child, obj)
-        if ret is None:
-            continue
-        return ret
 
 @argon.listen
 def on_keydown(key, modifiers, text):

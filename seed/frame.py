@@ -1,4 +1,24 @@
 from argon import rgba, Texture, Framebuffer
+import layout
+
+class LayoutController(object):
+    def __init__(self, fn, obj):
+        self.fn  = fn
+        self.obj = obj
+        assert not isinstance(self.fn, layout.Intron)
+
+    def build(self, intron):
+        self.fn(intron, self.obj)
+
+def find_intron(box, obj):
+    if isinstance(box, layout.Intron) and isinstance(box.controller, LayoutController):
+        if box.controller.obj == obj:
+            return box
+    for child in box:
+        ret = find_intron(child, obj)
+        if ret is None:
+            continue
+        return ret
 
 class Frame(object):
     def __init__(self, (left, top, width, height), document, layouter):
@@ -15,10 +35,26 @@ class Frame(object):
         self.scroll = (0, 0)
         self.overlays = set()
         self.background_color = rgba(0x30, 0x30, 0x30)
+        document.listeners.add(self)
 
     @property
     def rect(self):
         return self.left, self.top, self.width, self.height
+
+    def find_intron(self, obj):
+        return find_intron(self.box, obj)
+
+    def on_replace(self, container, index, this, that):
+        intron = self.find_intron(container)
+        if intron is not None:
+            intron.rebuild()
+        self.dirty = True
+
+    def on_splice(self, container, start, stop, data, removed):
+        intron = self.find_intron(container)
+        if intron is not None:
+            intron.rebuild()
+        self.dirty = True
 
     def update(self, argon):
         texture = self.texture
@@ -49,6 +85,7 @@ class Frame(object):
     def free(self):
         self.texture.free()
         self.framebuffer.free()
+        self.document.listeners.remove(self)
 
 class Overlay(object):
     def __init__(self, frame, renderer):
