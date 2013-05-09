@@ -36,7 +36,8 @@ There are tons of tools such as diff and grep, that operate on text files.
 They can be directly used to source code when it's text. There are many
 algorithms for text, such as ones used to provide collaborative editing.
 Lot of editors exists, some that allow text to be folded to hide lines
-that are irrelevant at the time.
+that are irrelevant at the time. Also version control systems can diff
+text.
 
 Programming languages are barely ever strict, so users can add comments
 and layout the code by adding superfluous spaces and carriages. This is
@@ -47,7 +48,7 @@ Programming in structured form has such potential that it needs to be
 considered essential to research through. The Essential Editor Research
 Project studies structured form editing.
 
-The latest working editor is seed/, it requires pygame and pyopengl. 
+The latest working editor is seed/, it requires python2.7, pygame and pyopengl. 
 It should run when you type "python main.py" inside it's directory.
 
 If you are interested about this project, I recommend you come to chat with others.

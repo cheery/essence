@@ -10,3 +10,14 @@ Fundamentals of seed research:
 
 Things to do:
     - put Frame listen the document it is layouting.
+
+
+Things to try out:
+    python main.py
+
+    click on the document with mouse to select objects
+    ctrl + a = selects all
+    left/right, possibly with shift = modify selection
+    inside a string object = insert text
+    backspace/delete = delete selection
+    ctrl + s = save to scratch.flat
