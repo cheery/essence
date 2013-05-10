@@ -1,0 +1,6 @@
+"""
+    strike
+    ~~~~~~
+
+    strike editing environment
+"""

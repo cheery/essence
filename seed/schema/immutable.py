@@ -171,3 +171,6 @@ def isbuffer(obj):
 
 def islist(obj):
     return isinstance(obj, List)
+
+def istype(obj, uid):
+    return isstruct(obj) and obj.type.uid == uid

@@ -34,12 +34,25 @@ class Frame(object):
         self.dirty = True
         self.scroll = (0, 0)
         self.overlays = set()
-        self.background_color = rgba(0x30, 0x30, 0x30)
+        self.style = {
+            'backround_color': rgba(0x30, 0x30, 0x30),
+        }
         document.listeners.add(self)
 
     @property
     def rect(self):
         return self.left, self.top, self.width, self.height
+
+    def pick_intron(self, (x,y)):
+        x -= self.left
+        y -= self.top
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return None
+        intron = None
+        for box in self.box.pick((x,y)):
+            if isinstance(box, layout.Intron):
+                intron = box
+        return intron
 
     def find_intron(self, obj):
         return find_intron(self.box, obj)
@@ -62,7 +75,7 @@ class Frame(object):
             texture.resize(self.width, self.height)
         argon.render.output = self.framebuffer
         argon.render.bind()
-        argon.clear(self.background_color)
+        argon.clear(self.style['background_color'])
         self.box.measure(None)
         self.box.arrange(None, self.scroll)
         self.box.render(argon)
