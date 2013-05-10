@@ -44,9 +44,9 @@ and layout the code by adding superfluous spaces and carriages. This is
 so useful that many editors attempt to help user with a heuristic which
 adds spaces after carriage.
 
-Programming in structured form has such potential that it needs to be
-considered essential to research through. The Essential Editor Research
-Project studies structured form editing.
+Programming in structured form has a lot of potential as it could eliminate
+parsers. Therefore it needs to be considered essential to research through.
+The Essential Editor Research Project studies structured form editing.
 
 The latest working editor is seed/, it requires python2.7, pygame and pyopengl. 
 It should run when you type "python main.py" inside it's directory.
