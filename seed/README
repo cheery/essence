@@ -13,11 +13,18 @@ Things to do:
 
 
 Things to try out:
-    python main.py
+    python main.py strike_test.flat
 
     click on the document with mouse to select objects
     ctrl + a = selects all
-    left/right, possibly with shift = modify selection
-    inside a string object = insert text
+    left/right, possibly with shift = modify selection. with ctrl, move in leafs
+    type character inside a string object = insert text
+    type character outside a string object = generate object that can hold text
     backspace/delete = delete selection
+    type '=' = spawn assignment
+    type '(' = spawn call
+    type alt+r = spawn return
+    space = jump to next slot
     ctrl + s = save to scratch.flat
+
+    type: python strikec.py to run. (you need llvmpy installed)

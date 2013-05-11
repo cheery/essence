@@ -4,7 +4,7 @@ target triple = "x86_64-pc-linux-gnu"
 
 @.str = private unnamed_addr constant [4 x i8] c"%d\0A\00", align 1
 
-define void @print_i32(i32 %i) nounwind {
+define void @print_i32(i32 %i) nounwind uwtable {
   %1 = alloca i32, align 4
   store i32 %i, i32* %1, align 4
   %2 = load i32* %1, align 4
@@ -14,7 +14,7 @@ define void @print_i32(i32 %i) nounwind {
 
 declare i32 @printf(i8*, ...)
 
-define i32 @mul_i32(i32 %a, i32 %b) nounwind {
+define i32 @mul_i32(i32 %a, i32 %b) nounwind uwtable {
   %1 = alloca i32, align 4
   %2 = alloca i32, align 4
   store i32 %a, i32* %1, align 4

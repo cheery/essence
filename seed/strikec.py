@@ -51,8 +51,8 @@ def compile_expr(build, expr, env):
         return Constant.int(int_t, int(expr.value))
     if istype(expr, u"call:callee:arguments"):
         assert istype(expr.callee, u"variable:name")
-        callee_fn = main_module.get_function_named(expr.callee.name)
-        if len(callee_fn) != len(expr.arguments):
+        callee_fn = env[expr.callee.name]
+        if len(callee_fn.args) != len(expr.arguments):
             raise CompilationError(expr.arguments.proxy, "incorrect argument count")
         argv = [compile_expr(build, argument, env) for argument in expr.arguments]
         return build.call(callee_fn, argv)
@@ -73,8 +73,8 @@ def compile_expr(build, expr, env):
     raise CompilationError(expr.proxy, "unknown statement")
 
 scope = {
-    "print_i32": main_module.get_function_named("print_i32"),
-    "mul_i32": main_module.get_function_named("mul_i32"),
+    u"print_i32": main_module.get_function_named("print_i32"),
+    u"mul_i32": main_module.get_function_named("mul_i32"),
 }
 
 for stmt in source:

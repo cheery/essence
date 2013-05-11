@@ -231,3 +231,17 @@ def isbuffer(obj):
 
 def islist(obj):
     return isinstance(obj, List)
+
+def istype(obj, uid):
+    if isinstance(uid, (tuple, list)):
+        return isstruct(obj) and obj.type.uid in uid
+    return isstruct(obj) and obj.type.uid == uid
+
+def isinside(obj, uid):
+    obj = get_object(obj)
+    if isinstance(obj, Document):
+        return False
+    return istype(obj.parent, uid)
+
+def iscont(obj):
+    return isinstance(obj, (Document, List))

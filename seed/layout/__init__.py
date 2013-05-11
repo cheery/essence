@@ -18,3 +18,7 @@ default = Config(None, dict(
     flow  = flow.simple,
     line_height = 1.2,
 ))
+
+class Slate(Box):
+    def __init__(self, width, height, style):
+        Box.__init__(self, (0,0,width,height), style)
